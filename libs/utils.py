@@ -5,6 +5,9 @@
 
 import sys
 import logging
+import os
+os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"          # Set pygame env var to hide "Hello" msg
+import pygame
 
 def setup_logging(loglevel:str="DEBUG") -> logging.Logger:
     """Set up a logger.
@@ -40,6 +43,16 @@ def setup_logging(loglevel:str="DEBUG") -> logging.Logger:
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
     return logger
+
+class Window:
+    """OS window information.
+
+    size -- (w,h)
+    flags -- OR'd bitflags. Default is pygame.RESIZABLE
+    """
+    def __init__(self, size:tuple, flags:int=pygame.RESIZABLE):
+        self.size = size
+        self.flags = flags
 
 if __name__ == '__main__':
     from pathlib import Path
