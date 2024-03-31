@@ -53,6 +53,8 @@ class Game:
         kmod = pygame.key.get_mods()                    # Which modifier keys are held
         for event in pygame.event.get():
             match event.type:
+                case pygame.WINDOWRESIZED:
+                    self.window.handle_WINDOWRESIZED(event)
                 case pygame.QUIT: sys.exit()
                 case pygame.KEYDOWN:
                     match event.key:
