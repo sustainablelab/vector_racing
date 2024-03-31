@@ -49,13 +49,14 @@ def setup_logging(loglevel:str="DEBUG") -> logging.Logger:
 class Window:
     """OS window information.
 
-    size -- (w,h)
-    flags -- OR'd bitflags. Default is pygame.RESIZABLE
+    size -- (w,h) - sets initial window size and tracks value when window is resized.
+    flags -- OR'd bitflags for window behavior. Default is pygame.RESIZABLE.
     """
     def __init__(self, size:tuple, flags:int=pygame.RESIZABLE):
         self.size = size
         self.flags = flags
     def handle_WINDOWRESIZED(self, event) -> None:
+        """Track size of OS window in self.size"""
         self.size = (event.x, event.y)
         logger.debug(f"Window resized, self.size: {self.size}")
 
