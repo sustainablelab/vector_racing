@@ -8,6 +8,7 @@ import logging
 import os
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"          # Set pygame env var to hide "Hello" msg
 import pygame
+from pygame import Color
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,34 @@ class Window:
         """Track size of OS window in self.size"""
         self.size = (event.x, event.y)
         logger.debug(f"Window resized, self.size: {self.size}")
+
+class Text:
+    def __init__(self, pos:tuple, font_size:int, sys_font:str):
+        self.pos = pos
+        self.font_size = font_size
+        self.sys_font = sys_font
+        self.antialias = True
+
+        if not pygame.font.get_init(): pygame.font.init()
+
+        self.font = pygame.font.SysFont(self.sys_font, self.font_size)
+
+        self.text_lines = []
+
+    def update(self, text:str) -> None:
+        """Update text. Split multiline text into a list of lines of text."""
+        self.text_lines = text.split("\n")
+
+    def render(self, surf:pygame.Surface, color:Color) -> None:
+        """Render text on the surface."""
+        for i, line in enumerate(self.text_lines):
+            ### render(text, antialias, color, background=None) -> Surface
+            text_surf = self.font.render(line, self.antialias, color)
+            surf.blit(text_surf,
+                      (self.pos[0], self.pos[1] + i*self.font.get_linesize()),
+                      special_flags=pygame.BLEND_ALPHA_SDL2
+                      )
+
 
 if __name__ == '__main__':
     from pathlib import Path
