@@ -26,5 +26,6 @@ Vim shortcut: `;tg<Space>`
 
 Tips:
 
-* Blitting large areas is slow. You can blit lots of small areas or you can
+* Blitting large surfaces is slow. You can blit lots of small areas or you can
   blit a few large areas. Do not blit lots of large areas. Use FPS to gauge.
+* Creating large surfaces is slow.

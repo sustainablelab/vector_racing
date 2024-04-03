@@ -11,7 +11,7 @@ import os
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"          # Set pygame env var to hide "Hello" msg
 import pygame
 from pygame import Color
-from libs.utils import setup_logging, Window, scale_data, Text
+from libs.utils import setup_logging, Window, scale_data, Text, DebugHud
 from libs.graph_paper import GraphPaper
 
 def shutdown() -> None:
@@ -26,18 +26,18 @@ class Game:
         pygame.font.init()                              # Initialize the font module
 
         os.environ["PYGAME_BLEND_ALPHA_SDL2"] = "1"     # Use SDL2 alpha blending
-        os.environ["SDL_VIDEO_WINDOW_POS"] = "800,0"    # Position window in upper right
+        # os.environ["SDL_VIDEO_WINDOW_POS"] = "800,0"    # Position window in upper right
 
         # Set up colors
         self.colors = {}
         self.colors['color_clear'] = Color(0,0,0,0)
         self.colors['color_os_window_bgnd'] = Color(30,30,30)
         self.colors['color_game_art_bgnd'] = Color(20,20,20)
-        self.colors['color_text_debug'] = Color(255,255,255)
 
         # Set up surfaces
         self.surfs = {}
-        w = 16; h = 16; scale = 40
+        # w = 16; h = 16; scale = 40
+        w = 29; h = 16; scale = 50
         self.window = Window((scale*w,scale*h))
         ### Surface((width, height), flags=0, Surface) -> Surface
         self.surfs['surf_game_art'] = pygame.Surface(self.window.size, flags=0)
@@ -46,9 +46,6 @@ class Game:
                 self.window.size,
                 self.window.flags,
                 )
-
-        self.graphPaper = GraphPaper(self)
-        self.texts = {}
 
         # FPS
         self.clock = pygame.time.Clock()
@@ -75,12 +72,14 @@ class Game:
 
         # Get user input
         self.handle_ui_events()
+
         # Clear screen
-        self.surfs['surf_game_art'].fill(self.colors['color_game_art_bgnd'])
+        # self.surfs['surf_game_art'].fill(self.colors['color_game_art_bgnd'])
         self.surfs['surf_os_window'].fill(self.colors['color_os_window_bgnd'])
 
-        # Draw graph paper color
-        self.graphPaper.render()
+        # Create and render graph paper
+        GraphPaper(self).render(self.surfs['surf_game_art'])
+        # GraphPaper(self).render(self.surfs['surf_os_window'])
 
         # Draw game art to OS window
         ### blit(source, dest, area=None, special_flags=0) -> Rect
@@ -91,12 +90,8 @@ class Game:
         #         (0,0),
         #         )
 
-        self.texts['text_debug'] = Text((0,0), font_size=15, sys_font="Roboto Mono")
-        self.texts['text_debug'].update(f"FPS: {self.clock.get_fps():0.1f}")
-        self.texts['text_debug'].render(
-                self.surfs['surf_os_window'],
-                self.colors['color_text_debug']
-                )
+        # Create and render the debug HUD
+        DebugHud(self).render()
 
         # Draw to the OS Window
         pygame.display.update()

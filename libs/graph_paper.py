@@ -28,22 +28,16 @@ class GraphPaper:
         self.colors = {}
         self.colors['color_graph_paper'] = Color(180,200,255,255)
         self.colors['color_graph_lines'] = Color(100,100,255,50)
+        # self.colors['color_graph_lines'] = Color(100,100,255)
 
         # Set up surfaces
         self.surfs = {}
 
+        # logger.debug("Created GraphPaper!")
 
-        logger.debug("Created GraphPaper!")
-
-    def render(self):
-        # Color the game art background "graph paper blue"
-        ### Surface((width, height), flags=0, Surface) -> Surface
-        self.surfs['surf_graph'] = pygame.Surface(
-                (self.game.window.size),
-                flags=pygame.SRCALPHA
-                )
-        self.surfs['surf_graph'].fill(self.colors['color_graph_paper'])
-        self.game.surfs['surf_game_art'].blit(self.surfs['surf_graph'],(0,0))
+    def render(self, surf):
+        # Color the background "graph paper blue"
+        surf.fill(self.colors['color_graph_paper'])
 
         # Calculate graph lines
         # Create N vertical and N horizontal grid lines
@@ -63,13 +57,18 @@ class GraphPaper:
         cys = scale_data(Cys, ay, by)
 
         # Draw graph lines
-        line_width = 3
-
-        # Make vertical lines
+        ### Surface((width, height), flags=0, Surface) -> Surface
         self.surfs['surf_graph'] = pygame.Surface(
                 (self.game.window.size),
                 flags=pygame.SRCALPHA
                 )
+        line_width = 3
+
+        # Make vertical lines
+        # self.surfs['surf_graph2'] = pygame.Surface(
+        #         (self.game.window.size),
+        #         flags=pygame.SRCALPHA
+        #         )
         graph_lines = []
         for cx in cxs:
             line = Line((cx,ay),(cx,by))
@@ -79,13 +78,13 @@ class GraphPaper:
             ### line(surface, color, start_pos, end_pos, width=1) -> Rect
             pygame.draw.line(self.surfs['surf_graph'], self.colors['color_graph_lines'],
                              line.start_pos, line.end_pos, width=line_width)
-        self.game.surfs['surf_game_art'].blit(self.surfs['surf_graph'],(0,0))
+        # surf.blit(self.surfs['surf_graph'],(0,0))
 
         # Make horizontal lines
-        self.surfs['surf_graph'] = pygame.Surface(
-                (self.game.window.size),
-                flags=pygame.SRCALPHA
-                )
+        # self.surfs['surf_graph2'] = pygame.Surface(
+        #         (self.game.window.size),
+        #         flags=pygame.SRCALPHA
+        #         )
         graph_lines = []
         for cy in cys:
             line = Line((ax,cy),(bx,cy))
@@ -98,7 +97,7 @@ class GraphPaper:
             # Clear graph paper surface
             # self.surfs['surf_graph'].fill(self.game.colors['color_clear'])
         ### blit(source, dest, area=None, special_flags=0) -> Rect
-        self.game.surfs['surf_game_art'].blit(self.surfs['surf_graph'],(0,0))
+        surf.blit(self.surfs['surf_graph'],(0,0))
 
 if __name__ == '__main__':
     from pathlib import Path
