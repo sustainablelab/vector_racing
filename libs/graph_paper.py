@@ -20,6 +20,10 @@ class Line:
     start_pos:tuple
     end_pos:tuple
 
+    def draw(self, surf, color, width) -> pygame.Rect:
+        ### line(surface, color, start_pos, end_pos, width=1) -> Rect
+        return pygame.draw.line(surf, color, self.start_pos, self.end_pos, width)
+
 class GraphPaper:
     def __init__(self, game):
         self.game = game
@@ -33,71 +37,93 @@ class GraphPaper:
         # Set up surfaces
         self.surfs = {}
 
-        # logger.debug("Created GraphPaper!")
+    def calculate_graph_lines(self, N:int, surf:pygame.Surface) -> list:
+        """Return list of Lines: N vertical and N horizontal grid lines.
 
-    def render(self, surf):
-        # Color the background "graph paper blue"
-        surf.fill(self.colors['color_graph_paper'])
+        N -- number of lines for each dimension
+        surf -- fill this surface with the lines
 
-        # Calculate graph lines
-        # Create N vertical and N horizontal grid lines
-        N = 20
-        # Set min (A) and max (B) in grid-coordinate space
-        A=(0,0); B = (N,N) # Ax = 0; Ay = 0; Bx = N; By = N
+        Generate lines from the affine combination:
+
+            (1-λ)A + λB = C
+
+        See scale_data().
+        """
+        # Set A=min(x,y) and B=max(x,y) in grid-coordinate space
+        A=(0,0); B = (N,N)
+        # Generate Cs (intermediate points) between A and B
         Cxs = list(range(A[0],B[0]+1))
         Cys = list(range(A[1],B[1]+1))
-        # Set min (a) and max (b) in game-art space
-        margin = 10
+        # Set a=min(x,y) and b=max(x,y) in game-art space
+        margin = 10                                     # Leave space around the grid
         ax = 0 + margin;
-        # TODO: Change this to reference graph art size, not os window size
-        ay = self.game.window.size[1] - margin
-        bx = self.game.window.size[0] - margin;
+        ay = surf.get_size()[1] - margin
+        bx = surf.get_size()[0] - margin;
         by = 0 + margin
+        # Generate cs (intermediate points) between a and b
         cxs = scale_data(Cxs, ax, bx)
         cys = scale_data(Cys, ay, by)
-
-        # Draw graph lines
-        ### Surface((width, height), flags=0, Surface) -> Surface
-        self.surfs['surf_graph'] = pygame.Surface(
-                (self.game.window.size),
-                flags=pygame.SRCALPHA
-                )
-        line_width = 3
-
         # Make vertical lines
-        # self.surfs['surf_graph2'] = pygame.Surface(
-        #         (self.game.window.size),
-        #         flags=pygame.SRCALPHA
-        #         )
         graph_lines = []
         for cx in cxs:
             line = Line((cx,ay),(cx,by))
             graph_lines.append(line)
-        for line in graph_lines:
-            # Draw a graph line
-            ### line(surface, color, start_pos, end_pos, width=1) -> Rect
-            pygame.draw.line(self.surfs['surf_graph'], self.colors['color_graph_lines'],
-                             line.start_pos, line.end_pos, width=line_width)
-        # surf.blit(self.surfs['surf_graph'],(0,0))
-
         # Make horizontal lines
-        # self.surfs['surf_graph2'] = pygame.Surface(
-        #         (self.game.window.size),
-        #         flags=pygame.SRCALPHA
-        #         )
-        graph_lines = []
         for cy in cys:
             line = Line((ax,cy),(bx,cy))
             graph_lines.append(line)
+        return graph_lines
+
+    def render(self, surf):
+        """Render graph paper on the surface.
+
+        surf -- render on this surface
+
+        - Make a grid that fills the surface (see calculate_graph_lines).
+        - Use Line.draw() to draw lines to a temporary surface.
+        - Blit each line from the temporary surface to the actual render
+          surface.
+            - This way, where the lines overlap, I get dark spots.
+            - Since the area of each line is small, I can blit each line
+              without taking a performance hit.
+        """
+        # Color the background "graph paper blue"
+        surf.fill(self.colors['color_graph_paper'])
+
+        graph_lines = self.calculate_graph_lines(N=20,surf=surf)
+
+        # Draw graph lines
+        line_width = 3
+        # Draw the lines on a temporary surface
+        ### Surface((width, height), flags=0, Surface) -> Surface
+        self.surfs['surf_draw'] = pygame.Surface(
+                (self.game.window.size),
+                flags=pygame.SRCALPHA
+                )
+
+        BLIT_EACH_LINE = True
         for line in graph_lines:
-            # Draw a graph line
+            # Draw a graph line on the temporary surface
             ### line(surface, color, start_pos, end_pos, width=1) -> Rect
-            pygame.draw.line(self.surfs['surf_graph'], self.colors['color_graph_lines'],
-                             line.start_pos, line.end_pos, width=line_width)
-            # Clear graph paper surface
-            # self.surfs['surf_graph'].fill(self.game.colors['color_clear'])
-        ### blit(source, dest, area=None, special_flags=0) -> Rect
-        surf.blit(self.surfs['surf_graph'],(0,0))
+            line_rect = line.draw(
+                    self.surfs['surf_draw'],
+                    self.colors['color_graph_lines'],
+                    width=line_width
+                    )
+            if BLIT_EACH_LINE:
+                # Copy each line from the temporary surface to the actual surface.
+                ### Blit lines individually to get the dark spot from alpha blend
+                ### where lines intersect.
+                surf.blit(
+                        self.surfs['surf_draw'],            # From this surface
+                        line_rect,                          # Go to this x,y coordinate
+                        line_rect,                          # Grab only this area
+                        special_flags=pygame.BLEND_ALPHA_SDL2 # Use alpha blending
+                        )
+        if not BLIT_EACH_LINE:
+            ### Blit the whole temporary surface in one shot to avoid those dark spots
+            ### blit(source, dest, area=None, special_flags=0) -> Rect
+            surf.blit(self.surfs['surf_draw'],(0,0))
 
 if __name__ == '__main__':
     from pathlib import Path
