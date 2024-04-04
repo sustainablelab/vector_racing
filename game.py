@@ -33,6 +33,7 @@ class Game:
         self.colors['color_clear'] = Color(0,0,0,0)
         self.colors['color_os_window_bgnd'] = Color(30,30,30)
         self.colors['color_game_art_bgnd'] = Color(20,20,20)
+        self.colors['color_debug_hud'] = Color(255,255,255)
 
         # Set up surfaces
         self.surfs = {}
@@ -74,24 +75,17 @@ class Game:
         self.handle_ui_events()
 
         # Clear screen
-        # self.surfs['surf_game_art'].fill(self.colors['color_game_art_bgnd'])
         self.surfs['surf_os_window'].fill(self.colors['color_os_window_bgnd'])
 
-        # Create and render graph paper
+        # Fill game art area with graph paper
         GraphPaper(self).render(self.surfs['surf_game_art'])
-        # GraphPaper(self).render(self.surfs['surf_os_window'])
 
         # Draw game art to OS window
         ### blit(source, dest, area=None, special_flags=0) -> Rect
         self.surfs['surf_os_window'].blit(self.surfs['surf_game_art'], (0,0))
-        # self.surfs['surf_os_window'].blit(
-        #         ### scale(surface, size, dest_surface=None) -> Surface
-        #         pygame.transform.scale(self.surfs['surf_game_art'], self.window.size),
-        #         (0,0),
-        #         )
 
         # Create and render the debug HUD
-        DebugHud(self).render()
+        DebugHud(self).render(self.colors['color_debug_hud'])
 
         # Draw to the OS Window
         pygame.display.update()
