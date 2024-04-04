@@ -144,10 +144,17 @@ class Text:
 class DebugHud:
     def __init__(self, game, ):
         self.game = game
+        self.debug_text = ""
+
+    def add_text(self, debug_text:str):
+        """Add debug text below FPS and Mouse."""
+        self.debug_text = debug_text
 
     def render(self, color:Color = Color(255,255,255)):
         self.text = Text((0,0), font_size=15, sys_font="Roboto Mono")
-        self.text.update(f"FPS: {self.game.clock.get_fps():0.1f}")
+        mpos = pygame.mouse.get_pos()
+        self.text.update(f"FPS: {self.game.clock.get_fps():0.1f} | Mouse: {mpos}"
+                         f"\n{self.debug_text}")
         self.text.render(self.game.surfs['surf_os_window'], color)
 
 if __name__ == '__main__':
