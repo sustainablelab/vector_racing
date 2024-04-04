@@ -142,14 +142,13 @@ class Text:
                       )
 
 class DebugHud:
-    def __init__(self, game, color:Color = Color(255,255,255)):
+    def __init__(self, game, ):
         self.game = game
-        self.color = color
 
-    def render(self):
+    def render(self, color:Color = Color(255,255,255)):
         self.text = Text((0,0), font_size=15, sys_font="Roboto Mono")
         self.text.update(f"FPS: {self.game.clock.get_fps():0.1f}")
-        self.text.render(self.game.surfs['surf_os_window'], self.color)
+        self.text.render(self.game.surfs['surf_os_window'], color)
 
 if __name__ == '__main__':
     from pathlib import Path
