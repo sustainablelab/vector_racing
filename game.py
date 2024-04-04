@@ -37,8 +37,8 @@ class Game:
 
         # Set up surfaces
         self.surfs = {}
-        # w = 16; h = 16; scale = 40
-        w = 29; h = 16; scale = 50
+        w = 16; h = 16; scale = 40
+        # w = 29; h = 16; scale = 50
         self.window = Window((scale*w,scale*h))
         ### Surface((width, height), flags=0, Surface) -> Surface
         self.surfs['surf_game_art'] = pygame.Surface(self.window.size, flags=0)
@@ -66,6 +66,9 @@ class Game:
                 case pygame.KEYDOWN:
                     match event.key:
                         case pygame.K_q: sys.exit()
+                case pygame.MOUSEMOTION:
+                    # logger.debug(f"{pygame.mouse.get_pos()}")
+                    pass
                 case _:
                     logger.debug(f"Ignored event: {pygame.event.event_name(event.type)}")
 
@@ -85,7 +88,11 @@ class Game:
         self.surfs['surf_os_window'].blit(self.surfs['surf_game_art'], (0,0))
 
         # Create and render the debug HUD
-        DebugHud(self).render(self.colors['color_debug_hud'])
+        debugHud = DebugHud(self)
+        # TODO: work out xfm from window pixel coordinates to grid coordinates
+        mpos = pygame.mouse.get_pos()
+        debugHud.add_text(f"Mouse: {mpos}")
+        debugHud.render(self.colors['color_debug_hud'])
 
         # Draw to the OS Window
         pygame.display.update()
