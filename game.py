@@ -38,6 +38,17 @@ class Mouse:
                 self.game.graphPaper,
                 self.game.surfs['surf_game_art'])
 
+    def render_snap_dot(self, radius:int, color:Color) -> None:
+        surf_draw = pygame.Surface(self.game.surfs['surf_game_art'].get_size(), flags=pygame.SRCALPHA)
+        ### circle(surface, color, center, radius) -> Rect
+        circle_rect = pygame.draw.circle(surf_draw, color, self.coords['pixel'], radius)
+        self.game.surfs['surf_game_art'].blit(
+                surf_draw,                              # From this surface
+                circle_rect,                            # Go to this x,y coordinate
+                circle_rect,                            # Grab only this area
+                special_flags=pygame.BLEND_ALPHA_SDL2   # Use alpha blending
+                )
+
 
 class Game:
     def __init__(self):
@@ -129,18 +140,6 @@ class Game:
         # Fill game art area with graph paper
         self.graphPaper.render(self.surfs['surf_game_art'])
 
-        # Draw a dot at the grid intersection closest to the mouse
-        surf_draw = pygame.Surface(self.surfs['surf_game_art'].get_size(), flags=pygame.SRCALPHA)
-        color = Color(255,0,0,180)
-        ### circle(surface, color, center, radius) -> Rect
-        circle_rect = pygame.draw.circle(surf_draw, color, self.mouse.coords['pixel'], 10)
-        self.surfs['surf_game_art'].blit(
-                surf_draw,                              # From this surface
-                circle_rect,                            # Go to this x,y coordinate
-                circle_rect,                            # Grab only this area
-                special_flags=pygame.BLEND_ALPHA_SDL2   # Use alpha blending
-                )
-
         # Draw a line from start to the dot if I started a vector
         surf_draw = pygame.Surface(self.surfs['surf_game_art'].get_size(), flags=pygame.SRCALPHA)
         color = Color(255,255,0,180)
@@ -153,6 +152,22 @@ class Game:
                     line_rect,                          # Grab only this area
                     special_flags=pygame.BLEND_ALPHA_SDL2 # Use alpha blending
                     )
+            # Draw a dot at the grid intersection closest to the mouse
+            self.mouse.render_snap_dot(radius=9, color=Color(0,200,255,150))
+            # Draw a dot at the start of the vector
+            color = Color(255,0,0,150)
+            radius = 5
+            circle_rect = pygame.draw.circle(surf_draw, color, self.vector['vector_start'], radius)
+            self.surfs['surf_game_art'].blit(
+                    surf_draw,                          # From this surface
+                    circle_rect,                        # Go to this x,y coordinate
+                    circle_rect,                        # Grab only this area
+                    special_flags=pygame.BLEND_ALPHA_SDL2   # Use alpha blending
+                    )
+        else:
+            # Draw a dot at the grid intersection closest to the mouse
+            self.mouse.render_snap_dot(radius=9, color=Color(255,0,0,150))
+
 
         # Draw game art to OS window
         ### blit(source, dest, area=None, special_flags=0) -> Rect
