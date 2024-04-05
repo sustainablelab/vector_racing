@@ -48,6 +48,10 @@ class Game:
                 self.window.flags,
                 )
 
+        # Game data
+        self.grid_N = 20
+        self.grid_margin = 10
+
         # FPS
         self.clock = pygame.time.Clock()
 
@@ -66,6 +70,11 @@ class Game:
                 case pygame.KEYDOWN:
                     match event.key:
                         case pygame.K_q: sys.exit()
+                        case pygame.K_n:
+                            if kmod & pygame.KMOD_SHIFT:
+                                self.grid_N = max(self.grid_N - 1, 2)
+                            else:
+                                self.grid_N = min(self.grid_N + 1, 40)
                 case pygame.MOUSEMOTION:
                     # logger.debug(f"{pygame.mouse.get_pos()}")
                     pass
@@ -81,7 +90,9 @@ class Game:
         self.surfs['surf_os_window'].fill(self.colors['color_os_window_bgnd'])
 
         # Fill game art area with graph paper
-        GraphPaper(self).render(self.surfs['surf_game_art'])
+        graphPaper = GraphPaper(self)
+        graphPaper.update(N=self.grid_N, margin=self.grid_margin)
+        graphPaper.render(self.surfs['surf_game_art'])
 
         # Draw game art to OS window
         ### blit(source, dest, area=None, special_flags=0) -> Rect
@@ -91,7 +102,29 @@ class Game:
         debugHud = DebugHud(self)
         # TODO: work out xfm from window pixel coordinates to grid coordinates
         mpos = pygame.mouse.get_pos()
-        debugHud.add_text(f"Mouse: {mpos}")
+
+        # General coordinate transformation:
+        # y1,y2 = [a,b;c,d]*(x1,x2)
+        # y1 = ax1 + bx2
+        # y2 = cx1 + dx2
+        # But in my case, grid coordinate system y1,y2 is just a scaled
+        # version of pixel coordinate system x1,x2.
+        # So b=0 and c=0 and we have:
+        # y1 = ax1
+        # y2 = dx2
+        # Then I can just use scale_data() from libs.utils.
+        # Pass a list of three values: [min,mouse,max] and, from the scaled
+        # data, extract the middle value.
+        size = self.surfs['surf_game_art'].get_size()
+        grid_mpos = (int(scale_data(
+                            [0+self.grid_margin, mpos[0], size[0]-self.grid_margin],
+                            0, self.grid_N)[1]
+                         ),
+                     int(scale_data(
+                            [0+self.grid_margin, mpos[1], size[1]-self.grid_margin],
+                            self.grid_N, 0)[1]
+                         ))
+        debugHud.add_text(f"Mouse: {grid_mpos}")
         debugHud.render(self.colors['color_debug_hud'])
 
         # Draw to the OS Window

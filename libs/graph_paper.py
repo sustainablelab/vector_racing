@@ -37,11 +37,25 @@ class GraphPaper:
         # Set up surfaces
         self.surfs = {}
 
-    def calculate_graph_lines(self, N:int, surf:pygame.Surface) -> list:
+        # Set defaults in case update() is never called
+        self.N = 20
+        self.margin = 10
+
+    def update(self, N:int, margin:int) -> None:
+        """Set N vertical and N horizontal grid lines.
+
+        N -- graph paper has N vertical lines and N horizontal lines
+        margin -- margin in pixels around the graph paper
+        """
+        self.N = N
+        self.margin = margin
+
+    def calculate_graph_lines(self, surf:pygame.Surface, N:int, margin:int) -> list:
         """Return list of Lines: N vertical and N horizontal grid lines.
 
         N -- number of lines for each dimension
         surf -- fill this surface with the lines
+        margin -- space in pixels between edge of screen and edge of graph paper
 
         Generate lines from the affine combination:
 
@@ -55,7 +69,6 @@ class GraphPaper:
         Cxs = list(range(A[0],B[0]+1))
         Cys = list(range(A[1],B[1]+1))
         # Set a=min(x,y) and b=max(x,y) in game-art space
-        margin = 10                                     # Leave space around the grid
         ax = 0 + margin;
         ay = surf.get_size()[1] - margin
         bx = surf.get_size()[0] - margin;
@@ -90,7 +103,7 @@ class GraphPaper:
         # Color the background "graph paper blue"
         surf.fill(self.colors['color_graph_paper'])
 
-        graph_lines = self.calculate_graph_lines(N=20,surf=surf)
+        graph_lines = self.calculate_graph_lines(surf, self.N, self.margin)
 
         # Draw graph lines
         line_width = 3
