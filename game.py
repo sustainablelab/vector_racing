@@ -12,13 +12,32 @@ os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"          # Set pygame env var to 
 import pygame
 from pygame import Color
 from libs.utils import setup_logging, Window, scale_data, Text, DebugHud
-from libs.graph_paper import GraphPaper, xfm_pix_to_grid, xfm_grid_to_pix
+from libs.graph_paper import GraphPaper, Line, xfm_pix_to_grid, xfm_grid_to_pix
 
 def shutdown() -> None:
     if logger: logger.info("Shutdown")
     # Clean up GUI
     pygame.font.quit()                                  # Uninitialize the font module
     pygame.quit()                                       # Uninitialize all pygame modules
+
+class Mouse:
+    def __init__(self, game):
+        self.game = game
+        self.coords = {}
+
+    def update(self) -> None:
+        pix_mpos = pygame.mouse.get_pos()
+        # Xfm mouse position from window pixel coordinates to "snapped" grid coordinates
+        self.coords['grid'] = xfm_pix_to_grid(
+                pix_mpos,
+                self.game.graphPaper,
+                self.game.surfs['surf_game_art'])
+        # Xfm back to pixels to get "snapped" pixel coordinates
+        self.coords['pixel'] = xfm_grid_to_pix(
+                self.coords['grid'],
+                self.game.graphPaper,
+                self.game.surfs['surf_game_art'])
+
 
 class Game:
     def __init__(self):
@@ -52,6 +71,9 @@ class Game:
         # Game data
         self.graphPaper = GraphPaper(self)
         self.graphPaper.update(N=20, margin=10, show_paper=True)
+        self.vector = {}
+        self.vector['vector_start'] = None
+        self.mouse = Mouse(self)
 
         # FPS
         self.clock = pygame.time.Clock()
@@ -85,6 +107,12 @@ class Game:
                 case pygame.MOUSEMOTION:
                     # logger.debug(f"{pygame.mouse.get_pos()}")
                     pass
+                case pygame.MOUSEBUTTONDOWN:
+                    # logger.debug("LEFT CLICK PRESS")
+                    self.vector['vector_start'] = self.mouse.coords['pixel']
+                case pygame.MOUSEBUTTONUP:
+                    # logger.debug("LEFT CLICK RELEASE")
+                    pass
                 case _:
                     logger.debug(f"Ignored event: {pygame.event.event_name(event.type)}")
 
@@ -92,6 +120,7 @@ class Game:
 
         # Get user input
         self.handle_ui_events()
+        self.mouse.update()
 
         # Clear screen
         self.surfs['surf_os_window'].fill(self.colors['color_os_window_bgnd'])
@@ -100,23 +129,30 @@ class Game:
         # Fill game art area with graph paper
         self.graphPaper.render(self.surfs['surf_game_art'])
 
-        # Xfm mouse position from window pixel coordinates to "snapped" grid coordinates
-        pix_mpos = pygame.mouse.get_pos()
-        grid_mpos = xfm_pix_to_grid(pix_mpos, self.graphPaper, self.surfs['surf_game_art'])
-        # Xfm back to pixel coordinates
-        pix_mpos = xfm_grid_to_pix(grid_mpos, self.graphPaper, self.surfs['surf_game_art'])
-
-        # Draw a dot at the grid_mpos
+        # Draw a dot at the grid intersection closest to the mouse
         surf_draw = pygame.Surface(self.surfs['surf_game_art'].get_size(), flags=pygame.SRCALPHA)
         color = Color(255,0,0,180)
         ### circle(surface, color, center, radius) -> Rect
-        circle_rect = pygame.draw.circle(surf_draw, color, pix_mpos, 10)
+        circle_rect = pygame.draw.circle(surf_draw, color, self.mouse.coords['pixel'], 10)
         self.surfs['surf_game_art'].blit(
                 surf_draw,                              # From this surface
                 circle_rect,                            # Go to this x,y coordinate
                 circle_rect,                            # Grab only this area
                 special_flags=pygame.BLEND_ALPHA_SDL2   # Use alpha blending
                 )
+
+        # Draw a line from start to the dot if I started a vector
+        surf_draw = pygame.Surface(self.surfs['surf_game_art'].get_size(), flags=pygame.SRCALPHA)
+        color = Color(255,255,0,180)
+        if self.vector['vector_start']:
+            line = Line(self.vector['vector_start'], self.mouse.coords['pixel'])
+            line_rect = line.draw(surf_draw, color, width=5)
+            self.surfs['surf_game_art'].blit(
+                    surf_draw,                          # From this surface
+                    line_rect,                          # Go to this x,y coordinate
+                    line_rect,                          # Grab only this area
+                    special_flags=pygame.BLEND_ALPHA_SDL2 # Use alpha blending
+                    )
 
         # Draw game art to OS window
         ### blit(source, dest, area=None, special_flags=0) -> Rect
@@ -125,7 +161,7 @@ class Game:
         # Create and render the debug HUD
         debugHud = DebugHud(self)
 
-        debugHud.add_text(f"Mouse: {grid_mpos}")
+        debugHud.add_text(f"Mouse: {self.mouse.coords['grid']}")
         if self.graphPaper.show_paper:
             debugHud.render(self.colors['color_debug_hud_dark'])
         else:
