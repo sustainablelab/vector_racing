@@ -110,7 +110,7 @@ class GraphPaper:
         # Draw the lines on a temporary surface
         ### Surface((width, height), flags=0, Surface) -> Surface
         self.surfs['surf_draw'] = pygame.Surface(
-                (self.game.window.size),
+                surf.get_size(),
                 flags=pygame.SRCALPHA
                 )
 
@@ -173,6 +173,27 @@ def xfm_pix_to_grid(point:tuple, graphPaper:GraphPaper, surf:pygame.Surface) -> 
              round(scale_data(
                     [0+graphPaper.margin, point[1], size[1]-graphPaper.margin],
                     graphPaper.N, 0)[1]
+                 ))
+
+def xfm_grid_to_pix(point:tuple, graphPaper:GraphPaper, surf:pygame.Surface) -> tuple:
+    """Return the point in pixel coordinates.
+
+    point -- x,y in grid coordinates
+    surf -- surface the graph paper is rendered on
+    graphPaper -- the graph paper
+
+    Use scale_data() from libs.utils.
+    Pass a list of three values: [min,mouse,max] and, from the scaled
+    data, extract the middle value.
+    """
+    size = surf.get_size()
+    return (round(scale_data(
+                    [0, point[0], graphPaper.N],
+                    0+graphPaper.margin, size[0]-graphPaper.margin)[1]
+                 ),
+             round(scale_data(
+                    [0, point[1], graphPaper.N],
+                    size[1]-graphPaper.margin, 0+graphPaper.margin)[1]
                  ))
 
 if __name__ == '__main__':

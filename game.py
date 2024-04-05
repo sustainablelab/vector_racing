@@ -12,7 +12,7 @@ os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"          # Set pygame env var to 
 import pygame
 from pygame import Color
 from libs.utils import setup_logging, Window, scale_data, Text, DebugHud
-from libs.graph_paper import GraphPaper, xfm_pix_to_grid
+from libs.graph_paper import GraphPaper, xfm_pix_to_grid, xfm_grid_to_pix
 
 def shutdown() -> None:
     if logger: logger.info("Shutdown")
@@ -94,15 +94,30 @@ class Game:
         # Fill game art area with graph paper
         self.graphPaper.render(self.surfs['surf_game_art'])
 
+        # Xfm mouse position from window pixel coordinates to "snapped" grid coordinates
+        pix_mpos = pygame.mouse.get_pos()
+        grid_mpos = xfm_pix_to_grid(pix_mpos, self.graphPaper, self.surfs['surf_game_art'])
+        # Xfm back to pixel coordinates
+        pix_mpos = xfm_grid_to_pix(grid_mpos, self.graphPaper, self.surfs['surf_game_art'])
+
+        # Draw a dot at the grid_mpos
+        surf_draw = pygame.Surface(self.surfs['surf_game_art'].get_size(), flags=pygame.SRCALPHA)
+        color = Color(255,0,0,180)
+        ### circle(surface, color, center, radius) -> Rect
+        circle_rect = pygame.draw.circle(surf_draw, color, pix_mpos, 10)
+        self.surfs['surf_game_art'].blit(
+                surf_draw,                              # From this surface
+                circle_rect,                            # Go to this x,y coordinate
+                circle_rect,                            # Grab only this area
+                special_flags=pygame.BLEND_ALPHA_SDL2   # Use alpha blending
+                )
+
         # Draw game art to OS window
         ### blit(source, dest, area=None, special_flags=0) -> Rect
         self.surfs['surf_os_window'].blit(self.surfs['surf_game_art'], (0,0))
 
         # Create and render the debug HUD
         debugHud = DebugHud(self)
-        # Xfm mouse position from window pixel coordinates to grid coordinates
-        pix_mpos = pygame.mouse.get_pos()
-        grid_mpos = xfm_pix_to_grid(pix_mpos, self.graphPaper, self.surfs['surf_game_art'])
 
         debugHud.add_text(f"Mouse: {grid_mpos}")
         debugHud.render(self.colors['color_debug_hud'])
