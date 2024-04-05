@@ -12,7 +12,7 @@ os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"          # Set pygame env var to 
 import pygame
 from pygame import Color
 from libs.utils import setup_logging, Window, scale_data, Text, DebugHud
-from libs.graph_paper import GraphPaper
+from libs.graph_paper import GraphPaper, xfm_pix_to_grid
 
 def shutdown() -> None:
     if logger: logger.info("Shutdown")
@@ -49,8 +49,8 @@ class Game:
                 )
 
         # Game data
-        self.grid_N = 20
-        self.grid_margin = 10
+        self.graphPaper = GraphPaper(self)
+        self.graphPaper.update(N=20, margin=10)
 
         # FPS
         self.clock = pygame.time.Clock()
@@ -72,9 +72,11 @@ class Game:
                         case pygame.K_q: sys.exit()
                         case pygame.K_n:
                             if kmod & pygame.KMOD_SHIFT:
-                                self.grid_N = max(self.grid_N - 1, 2)
+                                # Decrement and clamp at N=2
+                                self.graphPaper.N = max(self.graphPaper.N - 1, 2)
                             else:
-                                self.grid_N = min(self.grid_N + 1, 40)
+                                # Increment and clamp at N=40
+                                self.graphPaper.N = min(self.graphPaper.N + 1, 40)
                 case pygame.MOUSEMOTION:
                     # logger.debug(f"{pygame.mouse.get_pos()}")
                     pass
@@ -90,9 +92,7 @@ class Game:
         self.surfs['surf_os_window'].fill(self.colors['color_os_window_bgnd'])
 
         # Fill game art area with graph paper
-        graphPaper = GraphPaper(self)
-        graphPaper.update(N=self.grid_N, margin=self.grid_margin)
-        graphPaper.render(self.surfs['surf_game_art'])
+        self.graphPaper.render(self.surfs['surf_game_art'])
 
         # Draw game art to OS window
         ### blit(source, dest, area=None, special_flags=0) -> Rect
@@ -100,30 +100,10 @@ class Game:
 
         # Create and render the debug HUD
         debugHud = DebugHud(self)
-        # TODO: work out xfm from window pixel coordinates to grid coordinates
-        mpos = pygame.mouse.get_pos()
+        # Xfm mouse position from window pixel coordinates to grid coordinates
+        pix_mpos = pygame.mouse.get_pos()
+        grid_mpos = xfm_pix_to_grid(pix_mpos, self.graphPaper, self.surfs['surf_game_art'])
 
-        # General coordinate transformation:
-        # y1,y2 = [a,b;c,d]*(x1,x2)
-        # y1 = ax1 + bx2
-        # y2 = cx1 + dx2
-        # But in my case, grid coordinate system y1,y2 is just a scaled
-        # version of pixel coordinate system x1,x2.
-        # So b=0 and c=0 and we have:
-        # y1 = ax1
-        # y2 = dx2
-        # Then I can just use scale_data() from libs.utils.
-        # Pass a list of three values: [min,mouse,max] and, from the scaled
-        # data, extract the middle value.
-        size = self.surfs['surf_game_art'].get_size()
-        grid_mpos = (int(scale_data(
-                            [0+self.grid_margin, mpos[0], size[0]-self.grid_margin],
-                            0, self.grid_N)[1]
-                         ),
-                     int(scale_data(
-                            [0+self.grid_margin, mpos[1], size[1]-self.grid_margin],
-                            self.grid_N, 0)[1]
-                         ))
         debugHud.add_text(f"Mouse: {grid_mpos}")
         debugHud.render(self.colors['color_debug_hud'])
 

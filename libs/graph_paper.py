@@ -138,6 +138,43 @@ class GraphPaper:
             ### blit(source, dest, area=None, special_flags=0) -> Rect
             surf.blit(self.surfs['surf_draw'],(0,0))
 
+def xfm_pix_to_grid(point:tuple, graphPaper:GraphPaper, surf:pygame.Surface) -> tuple:
+    """Return the point in grid coordinates.
+
+    point -- x,y in pixel coordinates
+    surf -- surface the graph paper is rendered on
+    graphPaper -- the graph paper
+
+    General coordinate transformation:
+
+        y1,y2 = [a,b;c,d]*(x1,x2)
+
+    Or:
+        y1 = ax1 + bx2
+        y2 = cx1 + dx2
+
+    But in my case, grid coordinate system y1,y2 is just a scaled version of
+    pixel coordinate system x1,x2.
+
+    So b=0 and c=0 and we have:
+        y1 = ax1
+        y2 = dx2
+
+    Then I can just use scale_data() from libs.utils.
+
+    Pass a list of three values: [min,mouse,max] and, from the scaled
+    data, extract the middle value.
+    """
+    size = surf.get_size()
+    return (round(scale_data(
+                    [0+graphPaper.margin, point[0], size[0]-graphPaper.margin],
+                    0, graphPaper.N)[1]
+                 ),
+             round(scale_data(
+                    [0+graphPaper.margin, point[1], size[1]-graphPaper.margin],
+                    graphPaper.N, 0)[1]
+                 ))
+
 if __name__ == '__main__':
     from pathlib import Path
     print(f"Run doctests in {Path(__file__).name}")
