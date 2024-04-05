@@ -41,7 +41,7 @@ class GraphPaper:
         self.N = 20
         self.margin = 10
 
-    def update(self, N:int, margin:int) -> None:
+    def update(self, N:int, margin:int, show_paper:bool) -> None:
         """Set N vertical and N horizontal grid lines.
 
         N -- graph paper has N vertical lines and N horizontal lines
@@ -49,6 +49,7 @@ class GraphPaper:
         """
         self.N = N
         self.margin = margin
+        self.show_paper = show_paper
 
     def calculate_graph_lines(self, surf:pygame.Surface, N:int, margin:int) -> list:
         """Return list of Lines: N vertical and N horizontal grid lines.
@@ -100,8 +101,9 @@ class GraphPaper:
             - Since the area of each line is small, I can blit each line
               without taking a performance hit.
         """
-        # Color the background "graph paper blue"
-        surf.fill(self.colors['color_graph_paper'])
+        if self.show_paper:
+            # Color the background "graph paper blue"
+            surf.fill(self.colors['color_graph_paper'])
 
         graph_lines = self.calculate_graph_lines(surf, self.N, self.margin)
 

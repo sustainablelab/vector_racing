@@ -33,7 +33,8 @@ class Game:
         self.colors['color_clear'] = Color(0,0,0,0)
         self.colors['color_os_window_bgnd'] = Color(30,30,30)
         self.colors['color_game_art_bgnd'] = Color(20,20,20)
-        self.colors['color_debug_hud'] = Color(255,255,255)
+        self.colors['color_debug_hud_light'] = Color(200,255,220)
+        self.colors['color_debug_hud_dark'] = Color(50,30,0)
 
         # Set up surfaces
         self.surfs = {}
@@ -50,7 +51,7 @@ class Game:
 
         # Game data
         self.graphPaper = GraphPaper(self)
-        self.graphPaper.update(N=20, margin=10)
+        self.graphPaper.update(N=20, margin=10, show_paper=True)
 
         # FPS
         self.clock = pygame.time.Clock()
@@ -58,25 +59,29 @@ class Game:
     def run(self) -> None:
         while True: self.game_loop()
 
-    def handle_ui_events(self) -> None:
+    def handle_keydown(self, event) -> None:
         ### get_mods() -> int
         kmod = pygame.key.get_mods()                    # Which modifier keys are held
+        match event.key:
+            case pygame.K_q: sys.exit()
+            case pygame.K_n:
+                if kmod & pygame.KMOD_SHIFT:
+                    # Decrement and clamp at N=2
+                    self.graphPaper.N = max(self.graphPaper.N - 1, 2)
+                else:
+                    # Increment and clamp at N=40
+                    self.graphPaper.N = min(self.graphPaper.N + 1, 40)
+            case pygame.K_p:
+                self.graphPaper.show_paper = not self.graphPaper.show_paper
+
+    def handle_ui_events(self) -> None:
         for event in pygame.event.get():
             match event.type:
                 case pygame.WINDOWRESIZED:
                     self.window.handle_WINDOWRESIZED(event)
                     self.surfs['surf_game_art'] = pygame.Surface(self.window.size, flags=0)
                 case pygame.QUIT: sys.exit()
-                case pygame.KEYDOWN:
-                    match event.key:
-                        case pygame.K_q: sys.exit()
-                        case pygame.K_n:
-                            if kmod & pygame.KMOD_SHIFT:
-                                # Decrement and clamp at N=2
-                                self.graphPaper.N = max(self.graphPaper.N - 1, 2)
-                            else:
-                                # Increment and clamp at N=40
-                                self.graphPaper.N = min(self.graphPaper.N + 1, 40)
+                case pygame.KEYDOWN: self.handle_keydown(event)
                 case pygame.MOUSEMOTION:
                     # logger.debug(f"{pygame.mouse.get_pos()}")
                     pass
@@ -90,6 +95,7 @@ class Game:
 
         # Clear screen
         self.surfs['surf_os_window'].fill(self.colors['color_os_window_bgnd'])
+        self.surfs['surf_game_art'].fill(self.colors['color_game_art_bgnd'])
 
         # Fill game art area with graph paper
         self.graphPaper.render(self.surfs['surf_game_art'])
@@ -120,7 +126,10 @@ class Game:
         debugHud = DebugHud(self)
 
         debugHud.add_text(f"Mouse: {grid_mpos}")
-        debugHud.render(self.colors['color_debug_hud'])
+        if self.graphPaper.show_paper:
+            debugHud.render(self.colors['color_debug_hud_dark'])
+        else:
+            debugHud.render(self.colors['color_debug_hud_light'])
 
         # Draw to the OS Window
         pygame.display.update()
