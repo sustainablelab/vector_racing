@@ -9,6 +9,11 @@
 [x] Make a consistent API for efficient rendering with alpha blending.
 [x] Scale dot (filled circle) radius based on grid size
 [x] Keep points on the grid as N changes. Do not respect original pixel location.
+[x] Press escape to stop drawing vector
+[ ] Second mouse click stores the vector and a new vector starts
+[ ] Store drawn vectors
+[ ] Undo/redo last drawn vector
+[ ] Show x and y components of the vector being drawn
 """
 
 import sys
@@ -108,13 +113,13 @@ class Game:
         into zooming/panning controls.
         """
         if self.vector['vector_start']:
-            vector_start_pix = self.vector['vector_start']
-            vector_start_grid = xfm_pix_to_grid(
-                    vector_start_pix,
+            pix_vector_start = self.vector['vector_start']
+            grid_vector_start = xfm_pix_to_grid(
+                    pix_vector_start,
                     self.graphPaper,
                     self.surfs['surf_game_art'])
             self.vector['vector_start'] = xfm_grid_to_pix(
-                    vector_start_grid,
+                    grid_vector_start,
                     self.graphPaper,
                     self.surfs['surf_game_art'])
 
@@ -135,6 +140,8 @@ class Game:
                     self.refresh_snapped_points()
             case pygame.K_p:
                 self.graphPaper.show_paper = not self.graphPaper.show_paper
+            case pygame.K_ESCAPE:
+                self.vector['vector_start'] = None
 
     def handle_ui_events(self) -> None:
         for event in pygame.event.get():
