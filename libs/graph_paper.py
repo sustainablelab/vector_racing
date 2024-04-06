@@ -1,28 +1,22 @@
 #!/usr/bin/env python
 # vim: set fileencoding=utf-8 :
-"""Make graph paper.
+"""Make graph paper, xfm between pixel and grid coordinates.
+
+Define surfaces in the game.
+Do not define surfaces in 'graph_paper.py'. Not even temporary ones.
 """
 
 import sys
 import logging
-from dataclasses import dataclass
 import os
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"          # Set pygame env var to hide "Hello" msg
 import pygame
 from pygame import Color
 from libs.utils import scale_data
+from libs.geometry import Line
 
 logger = logging.getLogger(__name__)
 
-
-@dataclass
-class Line:
-    start_pos:tuple
-    end_pos:tuple
-
-    def draw(self, surf, color, width) -> pygame.Rect:
-        ### line(surface, color, start_pos, end_pos, width=1) -> Rect
-        return pygame.draw.line(surf, color, self.start_pos, self.end_pos, width)
 
 class GraphPaper:
     def __init__(self, game):
@@ -32,10 +26,6 @@ class GraphPaper:
         self.colors = {}
         self.colors['color_graph_paper'] = Color(180,200,255,255)
         self.colors['color_graph_lines'] = Color(100,100,255,50)
-        # self.colors['color_graph_lines'] = Color(100,100,255)
-
-        # Set up surfaces
-        self.surfs = {}
 
         # Set defaults in case update() is never called
         self.N = 20
@@ -94,51 +84,28 @@ class GraphPaper:
         surf -- render on this surface
 
         - Make a grid that fills the surface (see calculate_graph_lines).
-        - Use Line.draw() to draw lines to a temporary surface.
+        - Draw lines to a temporary surface.
         - Blit each line from the temporary surface to the actual render
           surface.
             - This way, where the lines overlap, I get dark spots.
             - Since the area of each line is small, I can blit each line
               without taking a performance hit.
         """
+        # Set a graph paper background
         if self.show_paper:
             # Color the background "graph paper blue"
             surf.fill(self.colors['color_graph_paper'])
 
+        # Calculate graph lines
         graph_lines = self.calculate_graph_lines(surf, self.N, self.margin)
 
         # Draw graph lines
         line_width = 3
-        # Draw the lines on a temporary surface
-        ### Surface((width, height), flags=0, Surface) -> Surface
-        self.surfs['surf_draw'] = pygame.Surface(
-                surf.get_size(),
-                flags=pygame.SRCALPHA
-                )
-
-        BLIT_EACH_LINE = True
         for line in graph_lines:
-            # Draw a graph line on the temporary surface
-            ### line(surface, color, start_pos, end_pos, width=1) -> Rect
-            line_rect = line.draw(
-                    self.surfs['surf_draw'],
-                    self.colors['color_graph_lines'],
-                    width=line_width
-                    )
-            if BLIT_EACH_LINE:
-                # Copy each line from the temporary surface to the actual surface.
-                ### Blit lines individually to get the dark spot from alpha blend
-                ### where lines intersect.
-                surf.blit(
-                        self.surfs['surf_draw'],            # From this surface
-                        line_rect,                          # Go to this x,y coordinate
-                        line_rect,                          # Grab only this area
-                        special_flags=pygame.BLEND_ALPHA_SDL2 # Use alpha blending
-                        )
-        if not BLIT_EACH_LINE:
-            ### Blit the whole temporary surface in one shot to avoid those dark spots
-            ### blit(source, dest, area=None, special_flags=0) -> Rect
-            surf.blit(self.surfs['surf_draw'],(0,0))
+            self.game.render_line(line, self.colors['color_graph_lines'], line_width)
+
+        # Clean up
+        self.game.render_clean()
 
 def xfm_pix_to_grid(point:tuple, graphPaper:GraphPaper, surf:pygame.Surface) -> tuple:
     """Return the point in grid coordinates.

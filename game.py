@@ -1,6 +1,12 @@
 #!/usr/bin/env python
 # vim: set fileencoding=utf-8 :
 """Vector racing game
+
+[x] Create graph paper
+[x] Convert between pixel coordinates and grid coordinates
+[x] Render lines with alpha blending efficiently
+[x] Render dots (filled circles) with alpha blending efficiently
+[x] Make a consistent API for efficient rendering with alpha blending.
 """
 
 import sys
@@ -10,9 +16,10 @@ import logging
 import os
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"          # Set pygame env var to hide "Hello" msg
 import pygame
-from pygame import Color
+from pygame import Color, Rect
 from libs.utils import setup_logging, Window, scale_data, Text, DebugHud
-from libs.graph_paper import GraphPaper, Line, xfm_pix_to_grid, xfm_grid_to_pix
+from libs.graph_paper import GraphPaper, xfm_pix_to_grid, xfm_grid_to_pix
+from libs.geometry import Line
 
 def shutdown() -> None:
     if logger: logger.info("Shutdown")
@@ -39,16 +46,7 @@ class Mouse:
                 self.game.surfs['surf_game_art'])
 
     def render_snap_dot(self, radius:int, color:Color) -> None:
-        surf_draw = pygame.Surface(self.game.surfs['surf_game_art'].get_size(), flags=pygame.SRCALPHA)
-        ### circle(surface, color, center, radius) -> Rect
-        circle_rect = pygame.draw.circle(surf_draw, color, self.coords['pixel'], radius)
-        self.game.surfs['surf_game_art'].blit(
-                surf_draw,                              # From this surface
-                circle_rect,                            # Go to this x,y coordinate
-                circle_rect,                            # Grab only this area
-                special_flags=pygame.BLEND_ALPHA_SDL2   # Use alpha blending
-                )
-
+        self.game.render_dot(self.coords['pixel'], radius, color)
 
 class Game:
     def __init__(self):
@@ -68,8 +66,8 @@ class Game:
 
         # Set up surfaces
         self.surfs = {}
-        w = 16; h = 16; scale = 40
-        # w = 29; h = 16; scale = 50
+        # w = 16; h = 16; scale = 40
+        w = 29; h = 16; scale = 50
         self.window = Window((scale*w,scale*h))
         ### Surface((width, height), flags=0, Surface) -> Surface
         self.surfs['surf_game_art'] = pygame.Surface(self.window.size, flags=0)
@@ -78,10 +76,12 @@ class Game:
                 self.window.size,
                 self.window.flags,
                 )
+        # Temporary drawing surface -- draw on this, blit the drawn portion, than clear this.
+        self.surfs['surf_draw'] = pygame.Surface(self.surfs['surf_game_art'].get_size(), flags=pygame.SRCALPHA)
 
         # Game data
         self.graphPaper = GraphPaper(self)
-        self.graphPaper.update(N=20, margin=10, show_paper=True)
+        self.graphPaper.update(N=40, margin=10, show_paper=True)
         self.vector = {}
         self.vector['vector_start'] = None
         self.mouse = Mouse(self)
@@ -113,6 +113,7 @@ class Game:
                 case pygame.WINDOWRESIZED:
                     self.window.handle_WINDOWRESIZED(event)
                     self.surfs['surf_game_art'] = pygame.Surface(self.window.size, flags=0)
+                    self.surfs['surf_draw'] = pygame.Surface(self.surfs['surf_game_art'].get_size(), flags=pygame.SRCALPHA)
                 case pygame.QUIT: sys.exit()
                 case pygame.KEYDOWN: self.handle_keydown(event)
                 case pygame.MOUSEMOTION:
@@ -134,36 +135,24 @@ class Game:
         self.mouse.update()
 
         # Clear screen
-        self.surfs['surf_os_window'].fill(self.colors['color_os_window_bgnd'])
+        # self.surfs['surf_os_window'].fill(self.colors['color_os_window_bgnd'])
         self.surfs['surf_game_art'].fill(self.colors['color_game_art_bgnd'])
+        # Erase all old artwork
+        self.surfs['surf_draw'].fill(self.colors['color_clear'])
 
         # Fill game art area with graph paper
         self.graphPaper.render(self.surfs['surf_game_art'])
 
         # Draw a line from start to the dot if I started a vector
-        surf_draw = pygame.Surface(self.surfs['surf_game_art'].get_size(), flags=pygame.SRCALPHA)
-        color = Color(255,255,0,180)
+        # surf_draw = pygame.Surface(self.surfs['surf_game_art'].get_size(), flags=pygame.SRCALPHA)
+        color = Color(255,255,0,120)
         if self.vector['vector_start']:
             line = Line(self.vector['vector_start'], self.mouse.coords['pixel'])
-            line_rect = line.draw(surf_draw, color, width=5)
-            self.surfs['surf_game_art'].blit(
-                    surf_draw,                          # From this surface
-                    line_rect,                          # Go to this x,y coordinate
-                    line_rect,                          # Grab only this area
-                    special_flags=pygame.BLEND_ALPHA_SDL2 # Use alpha blending
-                    )
+            self.render_line(line, color, width=5)
             # Draw a dot at the grid intersection closest to the mouse
             self.mouse.render_snap_dot(radius=9, color=Color(0,200,255,150))
             # Draw a dot at the start of the vector
-            color = Color(255,0,0,150)
-            radius = 5
-            circle_rect = pygame.draw.circle(surf_draw, color, self.vector['vector_start'], radius)
-            self.surfs['surf_game_art'].blit(
-                    surf_draw,                          # From this surface
-                    circle_rect,                        # Go to this x,y coordinate
-                    circle_rect,                        # Grab only this area
-                    special_flags=pygame.BLEND_ALPHA_SDL2   # Use alpha blending
-                    )
+            self.render_dot(self.vector['vector_start'], radius=5, color=Color(255,0,0,150))
         else:
             # Draw a dot at the grid intersection closest to the mouse
             self.mouse.render_snap_dot(radius=9, color=Color(255,0,0,150))
@@ -187,6 +176,59 @@ class Game:
 
         ### clock.tick(framerate=0) -> milliseconds
         self.clock.tick(60)
+
+    def render_clean(self) -> None:
+        """Clean up the temporary drawing surface for the next use.
+
+        I clean after making the graph paper grid. But that's it. Usually, it
+        is not necessary to clean.
+
+        Don't clean too often! Frame rate will drop if the temporary drawing
+        surface is large. Only clean if the desired drawing area is dirty.
+
+        The symptom of a dirty area is that older draw calls are showing up --
+        if there is alpha blending, these dirty area regions will show up less
+        transparent (because they are blitted multiple times). Or the
+        rectangular region being copied will look like a window into older
+        drawing data.
+        """
+        self.surfs['surf_draw'].fill(self.colors['color_clear'])
+
+    def render_rect_area(self, rect:Rect) -> None:
+        """Low-level rendering -- don't call this directly.
+
+        See also:
+            render_line
+            render_dot
+        """
+        self.surfs['surf_game_art'].blit(
+                self.surfs['surf_draw'],                # On this surface
+                rect,                                   # Go rect topleft x,y
+                rect,                                   # Copy this rect area to game art
+                special_flags=pygame.BLEND_ALPHA_SDL2   # Use alpha blending
+                )
+
+    def render_line(self, line:Line, color:Color, width:int) -> None:
+        """Render a Line on the game art with pygame.draw.line().
+
+        line -- Line(start_pos, end_pos)
+        color -- pygame.Color(R,G,B,A)
+        width -- line thickness in pixels
+        """
+        ### line(surface, color, start_pos, end_pos, width=1) -> Rect
+        line_rect = pygame.draw.line(self.surfs['surf_draw'], color, line.start_pos, line.end_pos, width)
+        self.render_rect_area(line_rect)
+
+    def render_dot(self, center:tuple, radius:int, color:Color) -> None:
+        """Render a filled-in circle on the game art with pygame.draw.circle().
+
+        center: circle center (x,y) in pixel coordinates
+        radius: circle radius in pixel coordinates
+        color: pygame.Color(R,G,B,A)
+        """
+        ### circle(surface, color, center, radius) -> Rect
+        circle_rect = pygame.draw.circle(self.surfs['surf_draw'], color, center, radius)
+        self.render_rect_area(circle_rect)
 
 if __name__ == '__main__':
     print(f"Run {Path(__file__).name}")
