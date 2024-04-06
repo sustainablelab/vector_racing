@@ -7,6 +7,8 @@
 [x] Render lines with alpha blending efficiently
 [x] Render dots (filled circles) with alpha blending efficiently
 [x] Make a consistent API for efficient rendering with alpha blending.
+[x] Scale dot (filled circle) radius based on grid size
+[x] Keep points on the grid as N changes. Do not respect original pixel location.
 """
 
 import sys
@@ -66,6 +68,7 @@ class Game:
 
         # Set up surfaces
         self.surfs = {}
+        # Set aspect ratio and size of game art
         # w = 16; h = 16; scale = 40
         w = 29; h = 16; scale = 50
         self.window = Window((scale*w,scale*h))
@@ -92,6 +95,30 @@ class Game:
     def run(self) -> None:
         while True: self.game_loop()
 
+    def refresh_snapped_points(self) -> None:
+        """After changing N grid lines, refresh location of snapped points.
+
+        TODO: Do I really want to do it this way? Probably not.
+        This puts the point back on the grid, but without respect for the
+        previous position. It drives home the point that 'n' and 'N' to change
+        number of grid lines is NOT a zoom. It is changing the grid.
+
+        What I really want to do is recenter the new grid to respect the
+        relationships between points already places on the grid. That gets
+        into zooming/panning controls.
+        """
+        if self.vector['vector_start']:
+            vector_start_pix = self.vector['vector_start']
+            vector_start_grid = xfm_pix_to_grid(
+                    vector_start_pix,
+                    self.graphPaper,
+                    self.surfs['surf_game_art'])
+            self.vector['vector_start'] = xfm_grid_to_pix(
+                    vector_start_grid,
+                    self.graphPaper,
+                    self.surfs['surf_game_art'])
+
+
     def handle_keydown(self, event) -> None:
         ### get_mods() -> int
         kmod = pygame.key.get_mods()                    # Which modifier keys are held
@@ -101,9 +128,11 @@ class Game:
                 if kmod & pygame.KMOD_SHIFT:
                     # Decrement and clamp at N=2
                     self.graphPaper.N = max(self.graphPaper.N - 1, 2)
+                    self.refresh_snapped_points()
                 else:
                     # Increment and clamp at N=40
                     self.graphPaper.N = min(self.graphPaper.N + 1, 40)
+                    self.refresh_snapped_points()
             case pygame.K_p:
                 self.graphPaper.show_paper = not self.graphPaper.show_paper
 
@@ -144,18 +173,24 @@ class Game:
         self.graphPaper.render(self.surfs['surf_game_art'])
 
         # Draw a line from start to the dot if I started a vector
-        # surf_draw = pygame.Surface(self.surfs['surf_game_art'].get_size(), flags=pygame.SRCALPHA)
+        # Set color of the line drawn with the mouse
         color = Color(255,255,0,120)
+        # Find the size of one grid box
+        grid_size = xfm_grid_to_pix((1,self.graphPaper.N-1), self.graphPaper, self.surfs['surf_game_art'])
+        # Set dot radii based on the grid_size
+        big_radius = int(0.5*0.5*grid_size[0])
+        small_radius = int(0.5*big_radius)
+
         if self.vector['vector_start']:
             line = Line(self.vector['vector_start'], self.mouse.coords['pixel'])
             self.render_line(line, color, width=5)
             # Draw a dot at the grid intersection closest to the mouse
-            self.mouse.render_snap_dot(radius=9, color=Color(0,200,255,150))
+            self.mouse.render_snap_dot(radius=big_radius, color=Color(0,200,255,150))
             # Draw a dot at the start of the vector
-            self.render_dot(self.vector['vector_start'], radius=5, color=Color(255,0,0,150))
+            self.render_dot(self.vector['vector_start'], radius=small_radius, color=Color(255,0,0,150))
         else:
             # Draw a dot at the grid intersection closest to the mouse
-            self.mouse.render_snap_dot(radius=9, color=Color(255,0,0,150))
+            self.mouse.render_snap_dot(radius=big_radius, color=Color(255,0,0,150))
 
 
         # Draw game art to OS window
@@ -165,7 +200,10 @@ class Game:
         # Create and render the debug HUD
         debugHud = DebugHud(self)
 
-        debugHud.add_text(f"Mouse: {self.mouse.coords['grid']}")
+        debugHud.add_text(
+                f"Mouse: {self.mouse.coords['grid']}"
+                f"\nN: {self.graphPaper.N}, grid_size: {grid_size} pixels"
+                )
         if self.graphPaper.show_paper:
             debugHud.render(self.colors['color_debug_hud_dark'])
         else:
