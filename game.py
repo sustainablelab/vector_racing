@@ -10,8 +10,10 @@
 [x] Scale dot (filled circle) radius based on grid size
 [x] Keep points on the grid as N changes. Do not respect original pixel location.
 [x] Press escape to stop drawing vector
-[ ] Second mouse click stores the vector and a new vector starts
-[ ] Store drawn vectors
+[x] Second mouse click stores the vector and a new vector starts
+    [x] Determine vector drawing state by checking if self.vector.start == None
+    [x] Store drawn vectors in list self.vectors
+[ ] Store drawn vectors -- IN GRID SPACE, NOT PIXEL SPACE!
 [ ] Undo/redo last drawn vector
 [ ] Show x and y components of the vector being drawn
 """
@@ -20,6 +22,7 @@ import sys
 from pathlib import Path
 import atexit
 import logging
+from dataclasses import dataclass
 import os
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"          # Set pygame env var to hide "Hello" msg
 import pygame
@@ -55,6 +58,11 @@ class Mouse:
     def render_snap_dot(self, radius:int, color:Color) -> None:
         self.game.render_dot(self.coords['pixel'], radius, color)
 
+@dataclass
+class Vector:
+    start:tuple=None
+    end:tuple=None
+
 class Game:
     def __init__(self):
         pygame.init()                                   # Init pygame -- quit in shutdown
@@ -89,9 +97,12 @@ class Game:
 
         # Game data
         self.graphPaper = GraphPaper(self)
-        self.graphPaper.update(N=40, margin=10, show_paper=True)
+        self.graphPaper.update(N=40, margin=10, show_paper=False)
         self.vector = {}
-        self.vector['vector_start'] = None
+        self.vector = Vector()
+        # self.vector['vector_start'] = None
+        # self.vector['vector_end'] = None
+        self.vectors = []
         self.mouse = Mouse(self)
 
         # FPS
@@ -112,17 +123,19 @@ class Game:
         relationships between points already places on the grid. That gets
         into zooming/panning controls.
         """
-        if self.vector['vector_start']:
-            pix_vector_start = self.vector['vector_start']
+        # if self.vector['vector_start']:
+        if self.vector.start:
+            # pix_vector_start = self.vector['vector_start']
+            pix_vector_start = self.vector.start
             grid_vector_start = xfm_pix_to_grid(
                     pix_vector_start,
                     self.graphPaper,
                     self.surfs['surf_game_art'])
-            self.vector['vector_start'] = xfm_grid_to_pix(
+            # self.vector['vector_start'] = xfm_grid_to_pix(
+            self.vector.start = xfm_grid_to_pix(
                     grid_vector_start,
                     self.graphPaper,
                     self.surfs['surf_game_art'])
-
 
     def handle_keydown(self, event) -> None:
         ### get_mods() -> int
@@ -141,7 +154,8 @@ class Game:
             case pygame.K_p:
                 self.graphPaper.show_paper = not self.graphPaper.show_paper
             case pygame.K_ESCAPE:
-                self.vector['vector_start'] = None
+                # self.vector['vector_start'] = None
+                self.vector = Vector()
 
     def handle_ui_events(self) -> None:
         for event in pygame.event.get():
@@ -157,7 +171,18 @@ class Game:
                     pass
                 case pygame.MOUSEBUTTONDOWN:
                     # logger.debug("LEFT CLICK PRESS")
-                    self.vector['vector_start'] = self.mouse.coords['pixel']
+                    # if self.vector['vector_start'] == None:
+                    if self.vector.start == None:
+                        # self.vector['vector_start'] = self.mouse.coords['pixel']
+                        self.vector.start = self.mouse.coords['pixel']
+                    else:
+                        # self.vector['vector_end'] = self.mouse.coords['pixel']
+                        self.vector.end = self.mouse.coords['pixel']
+                        self.vectors.append(self.vector)
+                        # Reset the active vector
+                        self.vector = Vector()
+                        # self.vector['vector_start'] = None
+                        # self.vector['vector_end'] = None
                 case pygame.MOUSEBUTTONUP:
                     # logger.debug("LEFT CLICK RELEASE")
                     pass
@@ -188,13 +213,17 @@ class Game:
         big_radius = int(0.5*0.5*grid_size[0])
         small_radius = int(0.5*big_radius)
 
-        if self.vector['vector_start']:
-            line = Line(self.vector['vector_start'], self.mouse.coords['pixel'])
+        # if self.vector['vector_start']:
+        if self.vector.start:
+            # Draw started vector
+            # line = Line(self.vector['vector_start'], self.mouse.coords['pixel'])
+            line = Line(self.vector.start, self.mouse.coords['pixel'])
             self.render_line(line, color, width=5)
             # Draw a dot at the grid intersection closest to the mouse
             self.mouse.render_snap_dot(radius=big_radius, color=Color(0,200,255,150))
             # Draw a dot at the start of the vector
-            self.render_dot(self.vector['vector_start'], radius=small_radius, color=Color(255,0,0,150))
+            # self.render_dot(self.vector['vector_start'], radius=small_radius, color=Color(255,0,0,150))
+            self.render_dot(self.vector.start, radius=small_radius, color=Color(255,0,0,150))
         else:
             # Draw a dot at the grid intersection closest to the mouse
             self.mouse.render_snap_dot(radius=big_radius, color=Color(255,0,0,150))
@@ -207,9 +236,14 @@ class Game:
         # Create and render the debug HUD
         debugHud = DebugHud(self)
 
+        # List vectors:
+        # TODO: represent vectors in a string form
+        vectors_str_list = [str(v) for v in self.vectors]
+        vectors_str = "\n".join(vectors_str_list)
         debugHud.add_text(
                 f"Mouse: {self.mouse.coords['grid']}"
                 f"\nN: {self.graphPaper.N}, grid_size: {grid_size} pixels"
+                f"\n{vectors_str}"
                 )
         if self.graphPaper.show_paper:
             debugHud.render(self.colors['color_debug_hud_dark'])
