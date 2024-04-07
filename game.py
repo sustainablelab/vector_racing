@@ -13,7 +13,7 @@
 [x] Second mouse click stores the vector and a new vector starts
     [x] Determine vector drawing state by checking if self.vector.start == None
     [x] Store drawn vectors in list self.vectors
-[ ] Store drawn vectors -- IN GRID SPACE, NOT PIXEL SPACE!
+[x] Store drawn vectors -- IN GRID SPACE, NOT PIXEL SPACE!
 [ ] Undo/redo last drawn vector
 [ ] Show x and y components of the vector being drawn
 """
@@ -60,6 +60,7 @@ class Mouse:
 
 @dataclass
 class Vector:
+    """Store vector 'start' and 'end' in grid coordinates."""
     start:tuple=None
     end:tuple=None
 
@@ -98,11 +99,8 @@ class Game:
         # Game data
         self.graphPaper = GraphPaper(self)
         self.graphPaper.update(N=40, margin=10, show_paper=False)
-        self.vector = {}
-        self.vector = Vector()
-        # self.vector['vector_start'] = None
-        # self.vector['vector_end'] = None
-        self.vectors = []
+        self.vector = Vector()                          # An empty vector
+        self.vectors = []                               # An empty list of vectors
         self.mouse = Mouse(self)
 
         # FPS
@@ -110,32 +108,6 @@ class Game:
 
     def run(self) -> None:
         while True: self.game_loop()
-
-    def refresh_snapped_points(self) -> None:
-        """After changing N grid lines, refresh location of snapped points.
-
-        TODO: Do I really want to do it this way? Probably not.
-        This puts the point back on the grid, but without respect for the
-        previous position. It drives home the point that 'n' and 'N' to change
-        number of grid lines is NOT a zoom. It is changing the grid.
-
-        What I really want to do is recenter the new grid to respect the
-        relationships between points already places on the grid. That gets
-        into zooming/panning controls.
-        """
-        # if self.vector['vector_start']:
-        if self.vector.start:
-            # pix_vector_start = self.vector['vector_start']
-            pix_vector_start = self.vector.start
-            grid_vector_start = xfm_pix_to_grid(
-                    pix_vector_start,
-                    self.graphPaper,
-                    self.surfs['surf_game_art'])
-            # self.vector['vector_start'] = xfm_grid_to_pix(
-            self.vector.start = xfm_grid_to_pix(
-                    grid_vector_start,
-                    self.graphPaper,
-                    self.surfs['surf_game_art'])
 
     def handle_keydown(self, event) -> None:
         ### get_mods() -> int
@@ -146,15 +118,12 @@ class Game:
                 if kmod & pygame.KMOD_SHIFT:
                     # Decrement and clamp at N=2
                     self.graphPaper.N = max(self.graphPaper.N - 1, 2)
-                    self.refresh_snapped_points()
                 else:
                     # Increment and clamp at N=40
                     self.graphPaper.N = min(self.graphPaper.N + 1, 40)
-                    self.refresh_snapped_points()
             case pygame.K_p:
                 self.graphPaper.show_paper = not self.graphPaper.show_paper
             case pygame.K_ESCAPE:
-                # self.vector['vector_start'] = None
                 self.vector = Vector()
 
     def handle_ui_events(self) -> None:
@@ -171,18 +140,13 @@ class Game:
                     pass
                 case pygame.MOUSEBUTTONDOWN:
                     # logger.debug("LEFT CLICK PRESS")
-                    # if self.vector['vector_start'] == None:
                     if self.vector.start == None:
-                        # self.vector['vector_start'] = self.mouse.coords['pixel']
-                        self.vector.start = self.mouse.coords['pixel']
+                        self.vector.start = self.mouse.coords['grid']
                     else:
-                        # self.vector['vector_end'] = self.mouse.coords['pixel']
-                        self.vector.end = self.mouse.coords['pixel']
+                        self.vector.end = self.mouse.coords['grid']
                         self.vectors.append(self.vector)
                         # Reset the active vector
                         self.vector = Vector()
-                        # self.vector['vector_start'] = None
-                        # self.vector['vector_end'] = None
                 case pygame.MOUSEBUTTONUP:
                     # logger.debug("LEFT CLICK RELEASE")
                     pass
@@ -215,15 +179,15 @@ class Game:
 
         # if self.vector['vector_start']:
         if self.vector.start:
+            # Convert vector.start grid coordinates to pixel coordinates
+            pix_vector_start = xfm_grid_to_pix(self.vector.start, self.graphPaper, self.surfs['surf_game_art'])
             # Draw started vector
-            # line = Line(self.vector['vector_start'], self.mouse.coords['pixel'])
-            line = Line(self.vector.start, self.mouse.coords['pixel'])
+            line = Line(pix_vector_start, self.mouse.coords['pixel'])
             self.render_line(line, color, width=5)
             # Draw a dot at the grid intersection closest to the mouse
             self.mouse.render_snap_dot(radius=big_radius, color=Color(0,200,255,150))
             # Draw a dot at the start of the vector
-            # self.render_dot(self.vector['vector_start'], radius=small_radius, color=Color(255,0,0,150))
-            self.render_dot(self.vector.start, radius=small_radius, color=Color(255,0,0,150))
+            self.render_dot(pix_vector_start, radius=small_radius, color=Color(255,0,0,150))
         else:
             # Draw a dot at the grid intersection closest to the mouse
             self.mouse.render_snap_dot(radius=big_radius, color=Color(255,0,0,150))
@@ -236,8 +200,7 @@ class Game:
         # Create and render the debug HUD
         debugHud = DebugHud(self)
 
-        # List vectors:
-        # TODO: represent vectors in a string form
+        # List vectors as strings as they are added by the user:
         vectors_str_list = [str(v) for v in self.vectors]
         vectors_str = "\n".join(vectors_str_list)
         debugHud.add_text(
