@@ -14,6 +14,7 @@
     [x] Determine vector drawing state by checking if self.vector.start == None
     [x] Store drawn vectors in list self.vectors
 [x] Store drawn vectors -- IN GRID SPACE, NOT PIXEL SPACE!
+[x] Draw the stored vectors!
 [ ] Undo/redo last drawn vector
 [ ] Show x and y components of the vector being drawn
 """
@@ -63,6 +64,13 @@ class Vector:
     """Store vector 'start' and 'end' in grid coordinates."""
     start:tuple=None
     end:tuple=None
+
+    @property
+    def vector(self) -> tuple:
+        if not self.start: return (None,None)
+        if not self.end: return (None,None)
+        return (self.end[0]-self.start[0], self.end[1]-self.start[1])
+
 
 class Game:
     def __init__(self):
@@ -170,7 +178,7 @@ class Game:
 
         # Draw a line from start to the dot if I started a vector
         # Set color of the line drawn with the mouse
-        color = Color(255,255,0,120)
+        line_color = Color(255,255,0,120)
         # Find the size of one grid box
         grid_size = xfm_grid_to_pix((1,self.graphPaper.N-1), self.graphPaper, self.surfs['surf_game_art'])
         # Set dot radii based on the grid_size
@@ -183,7 +191,7 @@ class Game:
             pix_vector_start = xfm_grid_to_pix(self.vector.start, self.graphPaper, self.surfs['surf_game_art'])
             # Draw started vector
             line = Line(pix_vector_start, self.mouse.coords['pixel'])
-            self.render_line(line, color, width=5)
+            self.render_line(line, line_color, width=5)
             # Draw a dot at the grid intersection closest to the mouse
             self.mouse.render_snap_dot(radius=big_radius, color=Color(0,200,255,150))
             # Draw a dot at the start of the vector
@@ -191,6 +199,14 @@ class Game:
         else:
             # Draw a dot at the grid intersection closest to the mouse
             self.mouse.render_snap_dot(radius=big_radius, color=Color(255,0,0,150))
+
+        # Draw the vectors
+        for vector in self.vectors:
+            # Draw the vector
+            pix_vector_start = xfm_grid_to_pix(vector.start, self.graphPaper, self.surfs['surf_game_art'])
+            pix_vector_end = xfm_grid_to_pix(vector.end, self.graphPaper, self.surfs['surf_game_art'])
+            line = Line(pix_vector_start, pix_vector_end)
+            self.render_line(line, line_color, width=5)
 
 
         # Draw game art to OS window
@@ -201,7 +217,7 @@ class Game:
         debugHud = DebugHud(self)
 
         # List vectors as strings as they are added by the user:
-        vectors_str_list = [str(v) for v in self.vectors]
+        vectors_str_list = [str(v) + ", vector = " + str(v.vector) for v in self.vectors]
         vectors_str = "\n".join(vectors_str_list)
         debugHud.add_text(
                 f"Mouse: {self.mouse.coords['grid']}"
