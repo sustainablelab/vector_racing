@@ -91,6 +91,26 @@ class LineSeg:
         if not self.end: return (None,None)
         return (self.end[0]-self.start[0], self.end[1]-self.start[1])
 
+class LineSegs:
+    """All the line segments drawn so far.
+
+    >>> lineSegs = LineSegs()
+    >>> lineSegs.record(LineSeg((1,2),(3,5)))
+    >>> lineSegs.record(LineSeg((-1,-2),(3,5)))
+    >>> lineSegs.history
+    [LineSeg(start=(1, 2), end=(3, 5)), LineSeg(start=(-1, -2), end=(3, 5))]
+    """
+    def __init__(self):
+        self.history = []
+
+    def record(self, l:LineSeg) -> None:
+        self.history.append(l)
+
+    def undo(self) -> None:
+        pass
+
+    def redo(self) -> None:
+        pass
 
 class Game:
     def __init__(self):
@@ -128,7 +148,8 @@ class Game:
         self.graphPaper = GraphPaper(self)
         self.graphPaper.update(N=40, margin=10, show_paper=False)
         self.lineSeg = LineSeg()                        # An empty line segment
-        self.lineSegs = []                              # An empty list of line segments
+        self.lineSegs = LineSegs()                      # An empty history of line segments
+        # self.lineSegs = []                              # An empty list of line segments
         self.mouse = Mouse(self)
 
         # FPS
@@ -172,7 +193,8 @@ class Game:
                         self.lineSeg.start = self.mouse.coords['grid']
                     else:
                         self.lineSeg.end = self.mouse.coords['grid']
-                        self.lineSegs.append(self.lineSeg)
+                        # self.lineSegs.append(self.lineSeg)
+                        self.lineSegs.record(self.lineSeg)
                         # Reset the active line segment
                         self.lineSeg = LineSeg()
                 case pygame.MOUSEBUTTONUP:
@@ -220,10 +242,10 @@ class Game:
             self.mouse.render_snap_dot(radius=big_radius, color=Color(255,0,0,150))
 
         # Draw the vectors
-        for lineSeg in self.lineSegs:
+        for l in self.lineSegs.history:
             # Draw the line segment
-            pix_start = xfm_grid_to_pix(lineSeg.start, self.graphPaper, self.surfs['surf_game_art'])
-            pix_end = xfm_grid_to_pix(lineSeg.end, self.graphPaper, self.surfs['surf_game_art'])
+            pix_start = xfm_grid_to_pix(l.start, self.graphPaper, self.surfs['surf_game_art'])
+            pix_end = xfm_grid_to_pix(l.end, self.graphPaper, self.surfs['surf_game_art'])
             line = Line(pix_start, pix_end)
             self.render_line(line, line_color, width=5)
 
@@ -236,7 +258,7 @@ class Game:
         debugHud = DebugHud(self)
 
         # List vectors as strings as they are added by the user:
-        vectors_str_list = ["Vector: " + str(l.vector) for l in self.lineSegs]
+        vectors_str_list = ["Vector: " + str(l.vector) for l in self.lineSegs.history]
         vectors_str = "\n".join(vectors_str_list)
         debugHud.add_text(
                 f"Mouse: {self.mouse.coords['grid']}"
