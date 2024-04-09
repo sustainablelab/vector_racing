@@ -81,6 +81,23 @@ class LineSeg:
     Get the vector that goes from 'start' to 'end':
     >>> lineSeg.vector
     (2, 3)
+
+    Check if the line segment is started.
+
+    A new line segment is not started:
+    >>> lineSeg = LineSeg()
+    >>> lineSeg.is_started
+    False
+
+    Start the line segment. Now it is started:
+    >>> lineSeg.start = (0,0)
+    >>> lineSeg.is_started
+    True
+
+    End the line segment. It is finished (not started):
+    >>> lineSeg.end = (0,0)
+    >>> lineSeg.is_started
+    False
     """
     start:tuple=None
     end:tuple=None
@@ -90,6 +107,20 @@ class LineSeg:
         if not self.start: return (None,None)
         if not self.end: return (None,None)
         return (self.end[0]-self.start[0], self.end[1]-self.start[1])
+
+    @property
+    def is_started(self) -> bool:
+        """Return True if a line segment is started but not finished.
+
+        Implements this truth table:
+
+            start | end  | started
+            ----- | ---  | -------
+            None  | x    | False
+            !None | None | True
+            !None | !None| False
+        """
+        return (self.start != None) and (self.end == None)
 
 class LineSegs:
     """All the line segments drawn so far.
@@ -173,7 +204,15 @@ class Game:
             case pygame.K_p:
                 self.graphPaper.show_paper = not self.graphPaper.show_paper
             case pygame.K_ESCAPE:
+                # Clear the active line segment.
                 self.lineSeg = LineSeg()
+            case pygame.K_u:
+                if self.lineSeg.is_started:
+                    # Clear the active line segment.
+                    self.lineSeg = LineSeg()
+                else:
+                    # TODO: go back once in undo/redo history
+                    pass
 
     def handle_ui_events(self) -> None:
         for event in pygame.event.get():
@@ -189,14 +228,18 @@ class Game:
                     pass
                 case pygame.MOUSEBUTTONDOWN:
                     # logger.debug("LEFT CLICK PRESS")
-                    if self.lineSeg.start == None:
-                        self.lineSeg.start = self.mouse.coords['grid']
-                    else:
+                    if self.lineSeg.is_started:
+                        # Ending a line segment.
+                        # This mouse click is the end point.
                         self.lineSeg.end = self.mouse.coords['grid']
-                        # self.lineSegs.append(self.lineSeg)
+                        # Store this line segment.
                         self.lineSegs.record(self.lineSeg)
                         # Reset the active line segment
                         self.lineSeg = LineSeg()
+                    else:
+                        # Starting a line segment.
+                        # This mouse click is the start point.
+                        self.lineSeg.start = self.mouse.coords['grid']
                 case pygame.MOUSEBUTTONUP:
                     # logger.debug("LEFT CLICK RELEASE")
                     pass
