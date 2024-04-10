@@ -16,9 +16,9 @@
     [ ] A new line segment starts
 [x] Store drawn line segments -- IN GRID SPACE, NOT PIXEL SPACE!
 [x] Draw the stored line segments!
-[ ] Undo/redo last drawn line segment
-    [ ] Undo/redo navigate the history/future of drawn line segments
-    [ ] If a new line segment is drawn after some number of undos, the future is erased
+[x] Undo/redo last drawn line segment
+    [x] Undo/redo navigate the history/future of drawn line segments
+    [x] If a new line segment is drawn after some number of undos, the future is erased
     * To implement:
         * Replace simple "list.append()" with a record(lineSeg, lineSegs)
         * record(lineSeg, lineSegs) is a simple append if the present is pointing at the end of the lineSegs history
@@ -125,23 +125,80 @@ class LineSeg:
 class LineSegs:
     """All the line segments drawn so far.
 
+    history:list -- all line segments in the history
+    head:int -- a "play head" that points at a line segment in the history
+    undo() -- move "head" backward in history
+    redo() -- move "head" forward in history
+
     >>> lineSegs = LineSegs()
+    >>> print(lineSegs.head)
+    None
     >>> lineSegs.record(LineSeg((1,2),(3,5)))
+    >>> print(lineSegs.head)
+    0
     >>> lineSegs.record(LineSeg((-1,-2),(3,5)))
     >>> lineSegs.history
     [LineSeg(start=(1, 2), end=(3, 5)), LineSeg(start=(-1, -2), end=(3, 5))]
+    >>> print(lineSegs.head)
+    1
+    >>> lineSegs.record(LineSeg((-1,-2),(3,5)))
+    >>> print(lineSegs.head)
+    2
+    >>> lineSegs.undo()
+    >>> print(lineSegs.head)
+    1
+    >>> lineSegs.undo()
+    >>> print(lineSegs.head)
+    0
+    >>> lineSegs.undo()
+    >>> print(lineSegs.head)
+    None
+    >>> lineSegs.redo()
+    >>> print(lineSegs.head)
+    0
+    >>> lineSegs.redo()
+    >>> print(lineSegs.head)
+    1
+    >>> lineSegs.redo()
+    >>> print(lineSegs.head)
+    2
+    >>> lineSegs.redo()
+    >>> print(lineSegs.head)
+    2
     """
     def __init__(self):
-        self.history = []
+        self.history = []                               # Initialize: empty list of line segments
+        self.head = None                                # Initialize: head points at nothing
+        self.size = 0                                   # Initialize: history size is 0
 
     def record(self, l:LineSeg) -> None:
-        self.history.append(l)
+        if (self.head == None):
+            # Prune the future before appending
+            self.size = 0
+            self.history = []
+        elif (self.head < self.size-1):
+            # Prune the future before appending
+            self.size = self.head+1
+            self.history = self.history[0:self.size]
+        # Normal append
+        self.history.append(l)                          # Add this line segment to the history
+        self.size += 1                                  # History size increases by 1
+        self.move_head_forward()
+
+    def move_head_forward(self) -> None:
+        if self.head == None:
+            self.head = 0                               # Point head at first element
+        else:
+            self.head = min(self.size-1, self.head+1)     # Point head at next element
 
     def undo(self) -> None:
-        pass
+        match self.head:
+            case None: pass
+            case 0: self.head = None
+            case _: self.head -= 1
 
     def redo(self) -> None:
-        pass
+        self.move_head_forward()
 
 class Game:
     def __init__(self):
@@ -178,6 +235,7 @@ class Game:
         # Game data
         self.graphPaper = GraphPaper(self)
         self.graphPaper.update(N=40, margin=10, show_paper=False)
+        self.grid_size = xfm_grid_to_pix((1,self.graphPaper.N-1), self.graphPaper, self.surfs['surf_game_art'])
         self.lineSeg = LineSeg()                        # An empty line segment
         self.lineSegs = LineSegs()                      # An empty history of line segments
         # self.lineSegs = []                              # An empty list of line segments
@@ -207,12 +265,9 @@ class Game:
                 # Clear the active line segment.
                 self.lineSeg = LineSeg()
             case pygame.K_u:
-                if self.lineSeg.is_started:
-                    # Clear the active line segment.
-                    self.lineSeg = LineSeg()
-                else:
-                    # TODO: go back once in undo/redo history
-                    pass
+                self.lineSegs.undo()
+            case pygame.K_r:
+                self.lineSegs.redo()
 
     def handle_ui_events(self) -> None:
         for event in pygame.event.get():
@@ -246,6 +301,32 @@ class Game:
                 case _:
                     logger.debug(f"Ignored event: {pygame.event.event_name(event.type)}")
 
+    def draw_started_lineSeg(self) -> None:
+        # Convert lineSeg.start grid coordinates to pixel coordinates
+        pix_start = xfm_grid_to_pix(self.lineSeg.start, self.graphPaper, self.surfs['surf_game_art'])
+
+        # Create a line segment from the start to the current mouse position
+        line = Line(pix_start, self.mouse.coords['pixel'])
+
+        # Set color of the line drawn with the mouse
+        line_color = Color(255,255,0,120)
+
+        # Draw the line segment
+        self.render_line(line, line_color, width=5)
+
+        # Find the size of one grid box
+        grid_size = xfm_grid_to_pix((1,self.graphPaper.N-1), self.graphPaper, self.surfs['surf_game_art'])
+
+        # Set dot radii based on the grid_size
+        big_radius = int(0.5*0.5*grid_size[0])
+        small_radius = int(0.5*big_radius)
+
+        # Draw a dot at the grid intersection closest to the mouse
+        self.mouse.render_snap_dot(radius=big_radius, color=Color(0,200,255,150))
+
+        # Draw a dot at the start of the vector
+        self.render_dot(pix_start, radius=small_radius, color=Color(255,0,0,150))
+
     def game_loop(self) -> None:
 
         # Get user input
@@ -255,37 +336,31 @@ class Game:
         # Clear screen
         # self.surfs['surf_os_window'].fill(self.colors['color_os_window_bgnd'])
         self.surfs['surf_game_art'].fill(self.colors['color_game_art_bgnd'])
-        # Erase all old artwork
-        self.surfs['surf_draw'].fill(self.colors['color_clear'])
 
         # Fill game art area with graph paper
         self.graphPaper.render(self.surfs['surf_game_art'])
 
-        # Draw a line from start to the dot if I started a line segment
-        # Set color of the line drawn with the mouse
-        line_color = Color(255,255,0,120)
         # Find the size of one grid box
-        grid_size = xfm_grid_to_pix((1,self.graphPaper.N-1), self.graphPaper, self.surfs['surf_game_art'])
-        # Set dot radii based on the grid_size
-        big_radius = int(0.5*0.5*grid_size[0])
-        small_radius = int(0.5*big_radius)
+        self.grid_size = xfm_grid_to_pix((1,self.graphPaper.N-1), self.graphPaper, self.surfs['surf_game_art'])
 
         if self.lineSeg.start:
-            # Convert lineSeg.start grid coordinates to pixel coordinates
-            pix_start = xfm_grid_to_pix(self.lineSeg.start, self.graphPaper, self.surfs['surf_game_art'])
-            # Draw started vector
-            line = Line(pix_start, self.mouse.coords['pixel'])
-            self.render_line(line, line_color, width=5)
-            # Draw a dot at the grid intersection closest to the mouse
-            self.mouse.render_snap_dot(radius=big_radius, color=Color(0,200,255,150))
-            # Draw a dot at the start of the vector
-            self.render_dot(pix_start, radius=small_radius, color=Color(255,0,0,150))
+            # Draw a line from start to the dot if I started a line segment
+            self.draw_started_lineSeg()
         else:
+            # Set dot radii based on the grid_size
+            big_radius = int(0.5*0.5*self.grid_size[0])
             # Draw a dot at the grid intersection closest to the mouse
             self.mouse.render_snap_dot(radius=big_radius, color=Color(255,0,0,150))
 
         # Draw the vectors
-        for l in self.lineSegs.history:
+        for i,l in enumerate(self.lineSegs.history):
+            if self.lineSegs.head == None: break
+            if i > self.lineSegs.head: break
+            # Set color of the lines in the history
+            if self.graphPaper.show_paper:
+                line_color = Color(60,30,0,120)
+            else:
+                line_color = Color(210,200,0,120)
             # Draw the line segment
             pix_start = xfm_grid_to_pix(l.start, self.graphPaper, self.surfs['surf_game_art'])
             pix_end = xfm_grid_to_pix(l.end, self.graphPaper, self.surfs['surf_game_art'])
@@ -304,8 +379,8 @@ class Game:
         vectors_str_list = ["Vector: " + str(l.vector) for l in self.lineSegs.history]
         vectors_str = "\n".join(vectors_str_list)
         debugHud.add_text(
-                f"Mouse: {self.mouse.coords['grid']}"
-                f"\nN: {self.graphPaper.N}, grid_size: {grid_size} pixels"
+                f"Mouse: {self.mouse.coords['grid']} | lineSegs.head: {self.lineSegs.head}"
+                f"\nN: {self.graphPaper.N}, grid_size: {self.grid_size} pixels"
                 f"\n{vectors_str}"
                 )
         if self.graphPaper.show_paper:
@@ -349,6 +424,8 @@ class Game:
                 rect,                                   # Copy this rect area to game art
                 special_flags=pygame.BLEND_ALPHA_SDL2   # Use alpha blending
                 )
+        # TODO: How do I clean up just this rect area?
+        # self.surfs['surf_game_art'].fill(self.colors['color_clear'], rect=rect)
 
     def render_line(self, line:Line, color:Color, width:int) -> None:
         """Render a Line on the game art with pygame.draw.line().
