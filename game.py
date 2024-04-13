@@ -13,7 +13,7 @@
 [x] Second mouse click stores the line segment
     [x] Determine line segment drawing state by checking if self.lineSeg.start == None
     [x] Store drawn line segments in list self.lineSegs
-    [ ] A new line segment starts
+    [x] A new line segment starts
 [x] Store drawn line segments -- IN GRID SPACE, NOT PIXEL SPACE!
 [x] Draw the stored line segments!
 [x] Undo/redo last drawn line segment
@@ -23,7 +23,8 @@
         * Replace simple "list.append()" with a record(lineSeg, lineSegs)
         * record(lineSeg, lineSegs) is a simple append if the present is pointing at the end of the lineSegs history
         * if the present is in the middle of the history, record deletes the future portion of the history before appending
-[ ] Show vector x and y components of the line segment being drawn
+[x] Show vector x and y components of the line segment being drawn
+[ ] Display number label for x and y components of the line segment being drawn
 [ ] I don't like the similarity in these names: geometry.Line and LineSeg
 """
 
@@ -36,7 +37,7 @@ import os
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"          # Set pygame env var to hide "Hello" msg
 import pygame
 from pygame import Color, Rect
-from libs.utils import setup_logging, Window, scale_data, Text, DebugHud
+from libs.utils import setup_logging, Window, scale_data, Text, DebugHud, signum
 from libs.graph_paper import GraphPaper, xfm_pix_to_grid, xfm_grid_to_pix
 from libs.geometry import Line
 
@@ -216,6 +217,8 @@ class Game:
         self.colors['color_game_art_bgnd'] = Color(20,20,20)
         self.colors['color_debug_hud_light'] = Color(200,255,220)
         self.colors['color_debug_hud_dark'] = Color(50,30,0)
+        self.colors['color_line_started_light'] = Color(255,255,0,120)
+        self.colors['color_line_started_dark'] = Color(50,30,0,120)
 
         # Set up surfaces
         self.surfs = {}
@@ -314,7 +317,10 @@ class Game:
         line = Line(pix_start, self.mouse.coords['pixel'])
 
         # Set color of the line drawn with the mouse
-        line_color = Color(255,255,0,120)
+        if self.graphPaper.show_paper:
+            line_color = self.colors['color_line_started_dark']
+        else:
+            line_color = self.colors['color_line_started_light']
 
         # Draw the line segment
         self.render_line(line, line_color, width=5)
@@ -331,6 +337,40 @@ class Game:
 
         # Draw a dot at the start of the vector
         self.render_dot(pix_start, radius=small_radius, color=Color(255,0,0,150))
+
+        ### Draw x and y components
+        pix_end = self.mouse.coords['pixel']
+        # Set color of x and y components
+        if self.graphPaper.show_paper:
+            line_color = self.colors['color_debug_hud_dark']
+        else:
+            line_color = self.colors['color_debug_hud_light']
+        # Draw x component
+        line = Line(pix_start, (pix_end[0],pix_start[1]))
+        self.render_line(line, line_color, width=3)
+        # Draw y component
+        line = Line((pix_end[0],pix_start[1]), pix_end)
+        self.render_line(line, line_color, width=3)
+
+        ### Draw little tick marks along these lines to indicate measuring (like a ruler has tick marks)
+        # Draw a tick mark at every grid intersection along the x-component
+        lineSeg = LineSeg(self.lineSeg.start, self.mouse.coords['grid'])
+        tick_len = small_radius
+        for i in range(abs(lineSeg.vector[0])):
+            x = lineSeg.start[0] + signum(lineSeg.vector[0])*i
+            y = lineSeg.start[1]
+            pix_start = xfm_grid_to_pix((x,y), self.graphPaper, self.surfs['surf_game_art'])
+            line = Line((pix_start[0],pix_start[1]-tick_len),
+                        (pix_start[0],pix_start[1]+tick_len))
+            self.render_line(line, line_color, width=3)
+        # Draw a tick mark at every grid intersection along the y-component
+        for i in range(abs(lineSeg.vector[1])):
+            x = lineSeg.end[0]
+            y = lineSeg.end[1] - signum(lineSeg.vector[1])*i
+            pix_start = xfm_grid_to_pix((x,y), self.graphPaper, self.surfs['surf_game_art'])
+            line = Line((pix_start[0]-tick_len,pix_start[1]),
+                        (pix_start[0]+tick_len,pix_start[1]))
+            self.render_line(line, line_color, width=3)
 
     def game_loop(self) -> None:
 

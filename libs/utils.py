@@ -157,6 +157,24 @@ class DebugHud:
                          f"\n{self.debug_text}")
         self.text.render(self.game.surfs['surf_os_window'], color)
 
+def signum(num) -> int:
+    """Return sign of num as +1, -1, or 0.
+
+    >>> signum(5)
+    1
+    >>> signum(-5)
+    -1
+    >>> signum(0)
+    0
+    >>> signum(0.1)
+    1
+    >>> signum(-0.1)
+    -1
+    """
+    if num > 0: return 1
+    elif num < 0: return -1
+    else: return 0
+
 if __name__ == '__main__':
     from pathlib import Path
     print(f"Run doctests in {Path(__file__).name}")
