@@ -146,15 +146,22 @@ class DebugHud:
         self.game = game
         self.debug_text = ""
 
+    def clear_text(self) -> None:
+        self.debug_text = ""
+
     def add_text(self, debug_text:str):
-        """Add debug text below FPS and Mouse."""
-        self.debug_text = debug_text
+        """Add another line of debug text.
+
+        Debug text always has FPS and Mouse.
+        Each call to add_text() adds a line below that.
+        """
+        self.debug_text += f"\n{debug_text}"
 
     def render(self, color:Color = Color(255,255,255)):
         self.text = Text((0,0), font_size=15, sys_font="Roboto Mono")
         mpos = pygame.mouse.get_pos()
         self.text.update(f"FPS: {self.game.clock.get_fps():0.1f} | Mouse: {mpos}"
-                         f"\n{self.debug_text}")
+                         f"{self.debug_text}")
         self.text.render(self.game.surfs['surf_os_window'], color)
 
 def signum(num) -> int:

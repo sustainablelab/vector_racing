@@ -42,6 +42,12 @@ class GraphPaper:
         """
         return xfm_grid_to_pix((1,self.N-1), self, surf)
 
+    def xfm_to_pix(self, point:tuple, surf:pygame.Surface) -> tuple:
+        """Return point on grid transformed to pixel coordinates.
+
+        surf -- the surface the graph paper is rendered on
+        """
+        return xfm_grid_to_pix(point, self, surf)
 
     def update(self, N:int, margin:int, show_paper:bool) -> None:
         """Set N vertical and N horizontal grid lines.

@@ -310,11 +310,17 @@ class Game:
                     logger.debug(f"Ignored event: {pygame.event.event_name(event.type)}")
 
     def draw_started_lineSeg(self) -> None:
-        # Convert lineSeg.start grid coordinates to pixel coordinates
-        pix_start = xfm_grid_to_pix(self.lineSeg.start, self.graphPaper, self.surfs['surf_game_art'])
+        # TODO: refactor this function
 
-        # Create a line segment from the start to the current mouse position
-        line = Line(pix_start, self.mouse.coords['pixel'])
+        # Define the started line segment
+        lineSeg = LineSeg(start=self.lineSeg.start, end=self.mouse.coords['grid'])
+        # TODO: use lineSeg.vector to orient the vector arrow head
+
+        # Convert lineSeg.start grid coordinates to pixel coordinates
+        pix_start = self.graphPaper.xfm_to_pix(lineSeg.start, self.surfs['surf_game_art'])
+
+        # Create a line from the start to the current mouse position
+        started_line = Line(pix_start, self.mouse.coords['pixel'])
 
         # Set color of the line drawn with the mouse
         if self.graphPaper.show_paper:
@@ -325,10 +331,10 @@ class Game:
         DRAW_AS_VECTOR = False
         if DRAW_AS_VECTOR:
             # Draw the line segment as a vector
-            self.render_line_as_vector(line, line_color, width=5)
+            self.render_line_as_vector(started_line, line_color, width=5)
         else:
             # Draw the line segment
-            self.render_line(line, line_color, width=5)
+            self.render_line(started_line, line_color, width=5)
 
         # Set dot radii based on the grid_size
         big_radius = int(0.5*0.5*self.grid_size[0])
@@ -339,11 +345,13 @@ class Game:
         else:
             # Draw a dot at the grid intersection closest to the mouse
             self.mouse.render_snap_dot(radius=big_radius, color=Color(0,200,255,150))
+            # Temporary: draw a small dot at a point 1/2 the smallest grid dimension back from the end point
+            a = int(round(min(self.grid_size[0], self.grid_size[1])/2))
+            self.debugHud.add_text(f"started_line.vector (pixels): {started_line.vector}")
+            self.render_dot(started_line.end, radius=small_radius, color=self.colors['color_debug_hud_light'])
 
         # Draw a dot at the start of the vector
-        self.render_dot(pix_start, radius=small_radius, color=Color(255,0,0,150))
-
-        # return
+        self.render_dot(started_line.start, radius=small_radius, color=Color(255,0,0,150))
 
         ### Draw x and y components
         pix_end = self.mouse.coords['pixel']
@@ -353,11 +361,11 @@ class Game:
         else:
             line_color = self.colors['color_debug_hud_light']
         # Draw x component
-        line = Line(pix_start, (pix_end[0],pix_start[1]))
-        self.render_line(line, line_color, width=3)
+        xline = Line(started_line.start, (started_line.end[0],started_line.start[1]))
+        self.render_line(xline, line_color, width=3)
         # Draw y component
-        line = Line((pix_end[0],pix_start[1]), pix_end)
-        self.render_line(line, line_color, width=3)
+        yline = Line((started_line.end[0],started_line.start[1]), started_line.end)
+        self.render_line(yline, line_color, width=3)
 
         ### Draw little tick marks along these lines to indicate measuring (like a ruler has tick marks)
         # Draw a tick mark at every grid intersection along the x-component
@@ -384,6 +392,10 @@ class Game:
         # Get user input
         self.handle_ui_events()
         self.mouse.update()
+
+        # Create the debug HUD
+        self.debugHud = DebugHud(self)
+
 
         # Clear screen
         # self.surfs['surf_os_window'].fill(self.colors['color_os_window_bgnd'])
@@ -429,21 +441,17 @@ class Game:
         ### blit(source, dest, area=None, special_flags=0) -> Rect
         self.surfs['surf_os_window'].blit(self.surfs['surf_game_art'], (0,0))
 
-        # Create and render the debug HUD
-        debugHud = DebugHud(self)
-
         # List vectors as strings as they are added by the user:
         vectors_str_list = ["Vector: " + str(l.vector) for l in self.lineSegs.history]
         vectors_str = "\n".join(vectors_str_list)
-        debugHud.add_text(
-                f"Mouse: {self.mouse.coords['grid']} | lineSegs.head: {self.lineSegs.head}"
-                f"\nN: {self.graphPaper.N}, grid_size: {self.grid_size} pixels"
-                f"\n{vectors_str}"
-                )
+        self.debugHud.add_text(f"Mouse: {self.mouse.coords['grid']} | lineSegs.head: {self.lineSegs.head}")
+        self.debugHud.add_text(f"N: {self.graphPaper.N}, grid_size: {self.grid_size} pixels")
+        self.debugHud.add_text(f"{vectors_str}")
+
         if self.graphPaper.show_paper:
-            debugHud.render(self.colors['color_debug_hud_dark'])
+            self.debugHud.render(self.colors['color_debug_hud_dark'])
         else:
-            debugHud.render(self.colors['color_debug_hud_light'])
+            self.debugHud.render(self.colors['color_debug_hud_light'])
 
         # Draw to the OS Window
         pygame.display.update()
@@ -487,18 +495,18 @@ class Game:
     def render_line(self, line:Line, color:Color, width:int) -> None:
         """Render a Line on the game art with pygame.draw.line().
 
-        line -- Line(start_pos, end_pos)
+        line -- Line(start, end)
         color -- pygame.Color(R,G,B,A)
         width -- line thickness in pixels
         """
-        ### line(surface, color, start_pos, end_pos, width=1) -> Rect
-        line_rect = pygame.draw.line(self.surfs['surf_draw'], color, line.start_pos, line.end_pos, width)
+        ### line(surface, color, start, end, width=1) -> Rect
+        line_rect = pygame.draw.line(self.surfs['surf_draw'], color, line.start, line.end, width)
         self.render_rect_area(line_rect)
 
     def render_line_as_vector(self, line:Line, color:Color, width:int) -> None:
         """Render a Line on the game art with pygame.draw.line().
 
-        line -- Line(start_pos, end_pos)
+        line -- Line(start, end)
         color -- pygame.Color(R,G,B,A)
         width -- line thickness in pixels
         """
@@ -507,17 +515,17 @@ class Game:
 
         ### Draw Arrow Head
         ### polygon(surface, color, points, width=0) -> Rect
-        p1 = (line.end_pos[0]-a,line.end_pos[1]-a)
-        p2 = (line.end_pos[0]-a,line.end_pos[1]+a)
-        p3 = (line.end_pos[0],line.end_pos[1])
+        p1 = (line.end[0]-a,line.end[1]-a)
+        p2 = (line.end[0]-a,line.end[1]+a)
+        p3 = (line.end[0],line.end[1])
         # TODO: rotate arrow head to point in direction of vector
         arrow_rect = pygame.draw.polygon(self.surfs['surf_draw'], color, [p1,p2,p3,p1])
         self.render_rect_area(arrow_rect)
 
         ### Draw Line
-        ### line(surface, color, start_pos, end_pos, width=1) -> Rect
+        ### line(surface, color, start, end, width=1) -> Rect
         # TODO: end line where arrow head starts
-        line_rect = pygame.draw.line(self.surfs['surf_draw'], color, line.start_pos, line.end_pos, width)
+        line_rect = pygame.draw.line(self.surfs['surf_draw'], color, line.start, line.end, width)
         self.render_rect_area(line_rect)
 
 
