@@ -24,6 +24,7 @@
         * record(lineSeg, lineSegs) is a simple append if the present is pointing at the end of the lineSegs history
         * if the present is in the middle of the history, record deletes the future portion of the history before appending
 [x] Show vector x and y components of the line segment being drawn
+[x] Display an arrow head at the end of the line segment being drawn (will use this later for visually representing vectors)
 [ ] Display number label for x and y components of the line segment being drawn
 [ ] I don't like the similarity in these names: geometry.Line and LineSeg
 """
@@ -338,9 +339,25 @@ class Game:
         # Draw x component
         xline = Line(started_line.start, (started_line.end[0],started_line.start[1]))
         self.render_line(xline, line_color, width=1)
+        # Label x component
+        # TODO: if y-component is negative, put x-label ABOVE the line
+        xlabel = Text((0,0), font_size=max(self.grid_size[0], self.grid_size[1]), sys_font="Roboto Mono")
+        xlabel.update(f"{lineSeg.vector[0]}")
+        xlabel_size = xlabel.font.size(xlabel.text_lines[0])
+        # Align center top of label to midpoint of the x-component
+        xlabel.pos = (xline.midpoint[0] - xlabel_size[0]/2, xline.midpoint[1])
+        xlabel.render(self.surfs['surf_game_art'], line_color)
         # Draw y component
         yline = Line((started_line.end[0],started_line.start[1]), started_line.end)
         self.render_line(yline, line_color, width=1)
+        # Label y component
+        ylabel = Text((0,0), font_size=max(self.grid_size[0], self.grid_size[1]), sys_font="Roboto Mono")
+        ylabel.update(f"{lineSeg.vector[1]}")
+        ylabel_height = ylabel.font.get_linesize()*len(ylabel.text_lines)
+        # TODO: if x-component is negative, put y-label LEFT of the line
+        # Align center left of label to midpoint of the y-component
+        ylabel.pos = (yline.midpoint[0] + ylabel.font.size("0")[0], yline.midpoint[1] - ylabel_height/2)
+        ylabel.render(self.surfs['surf_game_art'], line_color)
 
         ### Draw little tick marks along these lines to indicate measuring (like a ruler has tick marks)
         # Draw a tick mark at every grid intersection along the x-component
