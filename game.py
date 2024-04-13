@@ -28,6 +28,7 @@
 [ ] I don't like the similarity in these names: geometry.Line and LineSeg
 """
 
+import math
 import sys
 from pathlib import Path
 import atexit
@@ -328,27 +329,41 @@ class Game:
         else:
             line_color = self.colors['color_line_started_light']
 
-        DRAW_AS_VECTOR = False
-        if DRAW_AS_VECTOR:
-            # Draw the line segment as a vector
-            self.render_line_as_vector(started_line, line_color, width=5)
-        else:
-            # Draw the line segment
-            self.render_line(started_line, line_color, width=5)
-
         # Set dot radii based on the grid_size
         big_radius = int(0.5*0.5*self.grid_size[0])
         small_radius = int(0.5*big_radius)
 
+        DRAW_AS_VECTOR = True
         if DRAW_AS_VECTOR:
-            pass
+            # Find the minimum dimension of one grid box and scale it by s
+            s = 2/3
+            a = int(round(min(self.grid_size[0], self.grid_size[1])*s))
+            # Use 'a' to calculate a scaling factor for the started_line.vector
+            if started_line.start != started_line.end:
+                k = math.sqrt((a**2)/(started_line.vector[0]**2 + started_line.vector[1]**2))
+            else:
+                # If the vector is zero, scaling factor is 0 (avoid divide by zero)
+                k = 0
+            # Start the arrow head back from the end of the line by a distance of 1/2 the min grid dimension
+            arrow_head_base = (started_line.end[0] - k*started_line.vector[0], started_line.end[1] - k*started_line.vector[1])
+            # Get the perpendicular vector
+            pvec = (-1*started_line.vector[1], started_line.vector[0])
+            # Form the arrow head with the tip at the end of the line and the
+            # other two points of the triangle calc from pvec and arrow_head_base
+            arrow_head_points = [ started_line.end,     # Arrow head tip
+                                  (arrow_head_base[0] - k*pvec[0]/2, arrow_head_base[1] - k*pvec[1]/2),
+                                  (arrow_head_base[0] + k*pvec[0]/2, arrow_head_base[1] + k*pvec[1]/2)
+                                  ]
+            arrow_rect = pygame.draw.polygon(self.surfs['surf_draw'], line_color, arrow_head_points)
+            self.render_rect_area(arrow_rect)
+            # Draw the line segment
+            arrow_shaft = Line(started_line.start, arrow_head_base)
+            self.render_line(arrow_shaft, line_color, width=5)
         else:
+            # Draw the line segment
+            self.render_line(started_line, line_color, width=5)
             # Draw a dot at the grid intersection closest to the mouse
             self.mouse.render_snap_dot(radius=big_radius, color=Color(0,200,255,150))
-            # Temporary: draw a small dot at a point 1/2 the smallest grid dimension back from the end point
-            a = int(round(min(self.grid_size[0], self.grid_size[1])/2))
-            self.debugHud.add_text(f"started_line.vector (pixels): {started_line.vector}")
-            self.render_dot(started_line.end, radius=small_radius, color=self.colors['color_debug_hud_light'])
 
         # Draw a dot at the start of the vector
         self.render_dot(started_line.start, radius=small_radius, color=Color(255,0,0,150))
