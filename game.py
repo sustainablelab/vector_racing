@@ -340,12 +340,16 @@ class Game:
         xline = Line(started_line.start, (started_line.end[0],started_line.start[1]))
         self.render_line(xline, line_color, width=1)
         # Label x component
-        # TODO: if y-component is negative, put x-label ABOVE the line
         xlabel = Text((0,0), font_size=max(self.grid_size[0], self.grid_size[1]), sys_font="Roboto Mono")
         xlabel.update(f"{lineSeg.vector[0]}")
-        xlabel_size = xlabel.font.size(xlabel.text_lines[0])
-        # Align center top of label to midpoint of the x-component
-        xlabel.pos = (xline.midpoint[0] - xlabel_size[0]/2, xline.midpoint[1])
+        xlabel_width = xlabel.font.size(xlabel.text_lines[0])[0]
+        xlabel_height = xlabel.font.get_linesize()*len(xlabel.text_lines)
+        if lineSeg.vector[1] < 0:
+            # If y-component is NEGATIVE, align center BOTTOM of label to midpoint of the x-component
+            xlabel.pos = (xline.midpoint[0] - xlabel_width/2, xline.midpoint[1] - xlabel_height)
+        else:
+            # If y-component is POSITIVE, align center TOP of label to midpoint of the x-component
+            xlabel.pos = (xline.midpoint[0] - xlabel_width/2, xline.midpoint[1])
         xlabel.render(self.surfs['surf_game_art'], line_color)
         # Draw y component
         yline = Line((started_line.end[0],started_line.start[1]), started_line.end)
@@ -354,9 +358,14 @@ class Game:
         ylabel = Text((0,0), font_size=max(self.grid_size[0], self.grid_size[1]), sys_font="Roboto Mono")
         ylabel.update(f"{lineSeg.vector[1]}")
         ylabel_height = ylabel.font.get_linesize()*len(ylabel.text_lines)
-        # TODO: if x-component is negative, put y-label LEFT of the line
+        ylabel_width = ylabel.font.size(ylabel.text_lines[0])[0]
+        if lineSeg.vector[0] < 0:
+            # If x-component is NEGATIVE, put y-label LEFT of the line
+            ylabel.pos = (yline.midpoint[0] - ylabel_width - ylabel.font.size("0")[0]/2, yline.midpoint[1] - ylabel_height/2)
+        else:
+            # If x-component is POSITIVE, put y-label RIGHT of the line
+            ylabel.pos = (yline.midpoint[0] + ylabel.font.size("0")[0]/2, yline.midpoint[1] - ylabel_height/2)
         # Align center left of label to midpoint of the y-component
-        ylabel.pos = (yline.midpoint[0] + ylabel.font.size("0")[0], yline.midpoint[1] - ylabel_height/2)
         ylabel.render(self.surfs['surf_game_art'], line_color)
 
         ### Draw little tick marks along these lines to indicate measuring (like a ruler has tick marks)
