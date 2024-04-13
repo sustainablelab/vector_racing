@@ -239,7 +239,7 @@ class Game:
         # Game data
         self.graphPaper = GraphPaper(self)
         self.graphPaper.update(N=40, margin=10, show_paper=False)
-        self.grid_size = xfm_grid_to_pix((1,self.graphPaper.N-1), self.graphPaper, self.surfs['surf_game_art'])
+        self.grid_size = self.graphPaper.get_box_size(self.surfs['surf_game_art'])
         self.lineSeg = LineSeg()                        # An empty line segment
         self.lineSegs = LineSegs()                      # An empty history of line segments
         # self.lineSegs = []                              # An empty list of line segments
@@ -322,21 +322,28 @@ class Game:
         else:
             line_color = self.colors['color_line_started_light']
 
-        # Draw the line segment
-        self.render_line(line, line_color, width=5)
-
-        # Find the size of one grid box
-        grid_size = xfm_grid_to_pix((1,self.graphPaper.N-1), self.graphPaper, self.surfs['surf_game_art'])
+        DRAW_AS_VECTOR = False
+        if DRAW_AS_VECTOR:
+            # Draw the line segment as a vector
+            self.render_line_as_vector(line, line_color, width=5)
+        else:
+            # Draw the line segment
+            self.render_line(line, line_color, width=5)
 
         # Set dot radii based on the grid_size
-        big_radius = int(0.5*0.5*grid_size[0])
+        big_radius = int(0.5*0.5*self.grid_size[0])
         small_radius = int(0.5*big_radius)
 
-        # Draw a dot at the grid intersection closest to the mouse
-        self.mouse.render_snap_dot(radius=big_radius, color=Color(0,200,255,150))
+        if DRAW_AS_VECTOR:
+            pass
+        else:
+            # Draw a dot at the grid intersection closest to the mouse
+            self.mouse.render_snap_dot(radius=big_radius, color=Color(0,200,255,150))
 
         # Draw a dot at the start of the vector
         self.render_dot(pix_start, radius=small_radius, color=Color(255,0,0,150))
+
+        # return
 
         ### Draw x and y components
         pix_end = self.mouse.coords['pixel']
@@ -386,7 +393,7 @@ class Game:
         self.graphPaper.render(self.surfs['surf_game_art'])
 
         # Find the size of one grid box
-        self.grid_size = xfm_grid_to_pix((1,self.graphPaper.N-1), self.graphPaper, self.surfs['surf_game_art'])
+        self.grid_size = self.graphPaper.get_box_size(self.surfs['surf_game_art'])
 
         if self.lineSeg.start:
             # Draw a line from start to the dot if I started a line segment
@@ -487,6 +494,32 @@ class Game:
         ### line(surface, color, start_pos, end_pos, width=1) -> Rect
         line_rect = pygame.draw.line(self.surfs['surf_draw'], color, line.start_pos, line.end_pos, width)
         self.render_rect_area(line_rect)
+
+    def render_line_as_vector(self, line:Line, color:Color, width:int) -> None:
+        """Render a Line on the game art with pygame.draw.line().
+
+        line -- Line(start_pos, end_pos)
+        color -- pygame.Color(R,G,B,A)
+        width -- line thickness in pixels
+        """
+        # Set arrow head based on the grid_size
+        a = int(0.5*0.5*self.grid_size[0])
+
+        ### Draw Arrow Head
+        ### polygon(surface, color, points, width=0) -> Rect
+        p1 = (line.end_pos[0]-a,line.end_pos[1]-a)
+        p2 = (line.end_pos[0]-a,line.end_pos[1]+a)
+        p3 = (line.end_pos[0],line.end_pos[1])
+        # TODO: rotate arrow head to point in direction of vector
+        arrow_rect = pygame.draw.polygon(self.surfs['surf_draw'], color, [p1,p2,p3,p1])
+        self.render_rect_area(arrow_rect)
+
+        ### Draw Line
+        ### line(surface, color, start_pos, end_pos, width=1) -> Rect
+        # TODO: end line where arrow head starts
+        line_rect = pygame.draw.line(self.surfs['surf_draw'], color, line.start_pos, line.end_pos, width)
+        self.render_rect_area(line_rect)
+
 
     def render_dot(self, center:tuple, radius:int, color:Color) -> None:
         """Render a filled-in circle on the game art with pygame.draw.circle().

@@ -12,8 +12,12 @@ import os
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"          # Set pygame env var to hide "Hello" msg
 import pygame
 from pygame import Color
-from libs.utils import scale_data
-from libs.geometry import Line
+if __name__ == '__main__':
+    from utils import scale_data
+    from geometry import Line
+else:
+    from libs.utils import scale_data
+    from libs.geometry import Line
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +34,14 @@ class GraphPaper:
         # Set defaults in case update() is never called
         self.N = 20
         self.margin = 10
+
+    def get_box_size(self, surf:pygame.Surface) -> tuple:
+        """Return the size of one grid box in pixel coordinates as (w,h)
+
+        surf -- the surface the graph paper is rendered on
+        """
+        return xfm_grid_to_pix((1,self.N-1), self, surf)
+
 
     def update(self, N:int, margin:int, show_paper:bool) -> None:
         """Set N vertical and N horizontal grid lines.
