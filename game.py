@@ -24,6 +24,7 @@
         * record(lineSeg, lineSegs) is a simple append if the present is pointing at the end of the lineSegs history
         * if the present is in the middle of the history, record deletes the future portion of the history before appending
 [ ] Show vector x and y components of the line segment being drawn
+[ ] I don't like the similarity in these names: geometry.Line and LineSeg
 """
 
 import sys
@@ -291,6 +292,10 @@ class Game:
                         self.lineSegs.record(self.lineSeg)
                         # Reset the active line segment
                         self.lineSeg = LineSeg()
+                        CONTINUE_DRAWING = True
+                        if CONTINUE_DRAWING:
+                            # Record this as the start
+                            self.lineSeg.start = self.mouse.coords['grid']
                     else:
                         # Starting a line segment.
                         # This mouse click is the start point.
@@ -354,17 +359,22 @@ class Game:
 
         # Draw the vectors
         for i,l in enumerate(self.lineSegs.history):
+            # Draw nothing if play-head points to nothing
             if self.lineSegs.head == None: break
+            # Only draw lines up until the play-head
             if i > self.lineSegs.head: break
             # Set color of the lines in the history
             if self.graphPaper.show_paper:
+                # Brown if paper is visible
                 line_color = Color(60,30,0,120)
             else:
+                # Yellow if paper is invisible
                 line_color = Color(210,200,0,120)
-            # Draw the line segment
+            # Convert this line segment to a line in pixel coordinates
             pix_start = xfm_grid_to_pix(l.start, self.graphPaper, self.surfs['surf_game_art'])
             pix_end = xfm_grid_to_pix(l.end, self.graphPaper, self.surfs['surf_game_art'])
             line = Line(pix_start, pix_end)
+            # Draw the line segment
             self.render_line(line, line_color, width=5)
 
 
@@ -424,8 +434,8 @@ class Game:
                 rect,                                   # Copy this rect area to game art
                 special_flags=pygame.BLEND_ALPHA_SDL2   # Use alpha blending
                 )
-        # TODO: How do I clean up just this rect area?
-        # self.surfs['surf_game_art'].fill(self.colors['color_clear'], rect=rect)
+        # Clean up just this rect area on the temporary surface (otherwise bits of line get highlighted)
+        self.surfs['surf_draw'].fill(self.colors['color_clear'], rect=rect)
 
     def render_line(self, line:Line, color:Color, width:int) -> None:
         """Render a Line on the game art with pygame.draw.line().
