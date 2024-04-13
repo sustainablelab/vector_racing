@@ -323,15 +323,51 @@ class Game:
         # Create a line from the start to the current mouse position
         started_line = Line(pix_start, self.mouse.coords['pixel'])
 
+        # Set dot radii based on the grid_size
+        big_radius = int(0.5*0.5*self.grid_size[0])
+        small_radius = int(0.5*big_radius)
+
+
+        ### Draw x and y components
+        pix_end = self.mouse.coords['pixel']
+        # Set color of x and y components
+        if self.graphPaper.show_paper:
+            line_color = self.colors['color_debug_hud_dark']
+        else:
+            line_color = self.colors['color_debug_hud_light']
+        # Draw x component
+        xline = Line(started_line.start, (started_line.end[0],started_line.start[1]))
+        self.render_line(xline, line_color, width=1)
+        # Draw y component
+        yline = Line((started_line.end[0],started_line.start[1]), started_line.end)
+        self.render_line(yline, line_color, width=1)
+
+        ### Draw little tick marks along these lines to indicate measuring (like a ruler has tick marks)
+        # Draw a tick mark at every grid intersection along the x-component
+        lineSeg = LineSeg(self.lineSeg.start, self.mouse.coords['grid'])
+        tick_len = small_radius
+        for i in range(abs(lineSeg.vector[0])):
+            x = lineSeg.start[0] + signum(lineSeg.vector[0])*i
+            y = lineSeg.start[1]
+            pix_start = xfm_grid_to_pix((x,y), self.graphPaper, self.surfs['surf_game_art'])
+            line = Line((pix_start[0],pix_start[1]-tick_len),
+                        (pix_start[0],pix_start[1]+tick_len))
+            self.render_line(line, line_color, width=1)
+        # Draw a tick mark at every grid intersection along the y-component
+        for i in range(abs(lineSeg.vector[1])):
+            x = lineSeg.end[0]
+            y = lineSeg.end[1] - signum(lineSeg.vector[1])*i
+            pix_start = xfm_grid_to_pix((x,y), self.graphPaper, self.surfs['surf_game_art'])
+            line = Line((pix_start[0]-tick_len,pix_start[1]),
+                        (pix_start[0]+tick_len,pix_start[1]))
+            self.render_line(line, line_color, width=1)
+
         # Set color of the line drawn with the mouse
         if self.graphPaper.show_paper:
             line_color = self.colors['color_line_started_dark']
         else:
             line_color = self.colors['color_line_started_light']
 
-        # Set dot radii based on the grid_size
-        big_radius = int(0.5*0.5*self.grid_size[0])
-        small_radius = int(0.5*big_radius)
 
         DRAW_AS_VECTOR = True
         if DRAW_AS_VECTOR:
@@ -367,40 +403,6 @@ class Game:
 
         # Draw a dot at the start of the vector
         self.render_dot(started_line.start, radius=small_radius, color=Color(255,0,0,150))
-
-        ### Draw x and y components
-        pix_end = self.mouse.coords['pixel']
-        # Set color of x and y components
-        if self.graphPaper.show_paper:
-            line_color = self.colors['color_debug_hud_dark']
-        else:
-            line_color = self.colors['color_debug_hud_light']
-        # Draw x component
-        xline = Line(started_line.start, (started_line.end[0],started_line.start[1]))
-        self.render_line(xline, line_color, width=3)
-        # Draw y component
-        yline = Line((started_line.end[0],started_line.start[1]), started_line.end)
-        self.render_line(yline, line_color, width=3)
-
-        ### Draw little tick marks along these lines to indicate measuring (like a ruler has tick marks)
-        # Draw a tick mark at every grid intersection along the x-component
-        lineSeg = LineSeg(self.lineSeg.start, self.mouse.coords['grid'])
-        tick_len = small_radius
-        for i in range(abs(lineSeg.vector[0])):
-            x = lineSeg.start[0] + signum(lineSeg.vector[0])*i
-            y = lineSeg.start[1]
-            pix_start = xfm_grid_to_pix((x,y), self.graphPaper, self.surfs['surf_game_art'])
-            line = Line((pix_start[0],pix_start[1]-tick_len),
-                        (pix_start[0],pix_start[1]+tick_len))
-            self.render_line(line, line_color, width=3)
-        # Draw a tick mark at every grid intersection along the y-component
-        for i in range(abs(lineSeg.vector[1])):
-            x = lineSeg.end[0]
-            y = lineSeg.end[1] - signum(lineSeg.vector[1])*i
-            pix_start = xfm_grid_to_pix((x,y), self.graphPaper, self.surfs['surf_game_art'])
-            line = Line((pix_start[0]-tick_len,pix_start[1]),
-                        (pix_start[0]+tick_len,pix_start[1]))
-            self.render_line(line, line_color, width=3)
 
     def game_loop(self) -> None:
 
