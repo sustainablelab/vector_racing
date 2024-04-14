@@ -25,7 +25,8 @@
         * if the present is in the middle of the history, record deletes the future portion of the history before appending
 [x] Show vector x and y components of the line segment being drawn
 [x] Display an arrow head at the end of the line segment being drawn (will use this later for visually representing vectors)
-[ ] Display number label for x and y components of the line segment being drawn
+[x] Display number label for x and y components of the line segment being drawn
+[x] F10 toggles ortho lock
 [ ] I don't like the similarity in these names: geometry.Line and LineSeg
 """
 
@@ -56,6 +57,17 @@ class Mouse:
 
     def update(self) -> None:
         pix_mpos = pygame.mouse.get_pos()
+        if self.game.lineSeg.start and self.game.lock_ortho:
+            # Get the start of the line segment in pixel coordinates
+            pix_start = self.game.graphPaper.xfm_to_pix(self.game.lineSeg.start, self.game.surfs['surf_game_art'])
+            pix_mpos = list(pix_mpos)                   # Make this mutable
+            # Lock mouse along whichever axis has the greater component
+            if abs(pix_mpos[0] - pix_start[0]) > abs(pix_mpos[1] - pix_start[1]):
+                # x-component > y-component, so lock line to x (set end_y = start_y)
+                pix_mpos[1] = pix_start[1]
+            else:
+                # y-component >= x-component, so lock line to y (set end_x = start_x)
+                pix_mpos[0] = pix_start[0]
         # Xfm mouse position from window pixel coordinates to "snapped" grid coordinates
         self.coords['grid'] = xfm_pix_to_grid(
                 pix_mpos,
@@ -239,6 +251,7 @@ class Game:
         self.surfs['surf_draw'] = pygame.Surface(self.surfs['surf_game_art'].get_size(), flags=pygame.SRCALPHA)
 
         # Game data
+        self.lock_ortho = False
         self.graphPaper = GraphPaper(self)
         self.graphPaper.update(N=40, margin=10, show_paper=False)
         self.grid_size = self.graphPaper.get_box_size(self.surfs['surf_game_art'])
@@ -267,6 +280,8 @@ class Game:
                     self.graphPaper.N = min(self.graphPaper.N + 1, 40)
             case pygame.K_p:
                 self.graphPaper.show_paper = not self.graphPaper.show_paper
+            case pygame.K_F10:
+                self.lock_ortho = not self.lock_ortho
             case pygame.K_ESCAPE:
                 # Clear the active line segment.
                 self.lineSeg = LineSeg()
@@ -350,7 +365,9 @@ class Game:
         else:
             # If y-component is POSITIVE, align center TOP of label to midpoint of the x-component
             xlabel.pos = (xline.midpoint[0] - xlabel_width/2, xline.midpoint[1])
-        xlabel.render(self.surfs['surf_game_art'], line_color)
+        # Render the xlabel only if the x-component is not zero
+        if lineSeg.vector[0] != 0:
+            xlabel.render(self.surfs['surf_game_art'], line_color)
         # Draw y component
         yline = Line((started_line.end[0],started_line.start[1]), started_line.end)
         self.render_line(yline, line_color, width=1)
@@ -360,13 +377,14 @@ class Game:
         ylabel_height = ylabel.font.get_linesize()*len(ylabel.text_lines)
         ylabel_width = ylabel.font.size(ylabel.text_lines[0])[0]
         if lineSeg.vector[0] < 0:
-            # If x-component is NEGATIVE, put y-label LEFT of the line
+            # If x-component is NEGATIVE, align center LEFT of label to midpoint of the y-component
             ylabel.pos = (yline.midpoint[0] - ylabel_width - ylabel.font.size("0")[0]/2, yline.midpoint[1] - ylabel_height/2)
         else:
-            # If x-component is POSITIVE, put y-label RIGHT of the line
+            # If x-component is POSITIVE, align center RIGHT of label to midpoint of the y-component
             ylabel.pos = (yline.midpoint[0] + ylabel.font.size("0")[0]/2, yline.midpoint[1] - ylabel_height/2)
-        # Align center left of label to midpoint of the y-component
-        ylabel.render(self.surfs['surf_game_art'], line_color)
+        # Render the ylabel only if the y-component is not zero
+        if lineSeg.vector[1] != 0:
+            ylabel.render(self.surfs['surf_game_art'], line_color)
 
         ### Draw little tick marks along these lines to indicate measuring (like a ruler has tick marks)
         # Draw a tick mark at every grid intersection along the x-component
@@ -432,12 +450,15 @@ class Game:
 
     def game_loop(self) -> None:
 
+        # Create the debug HUD (create this first so everything after can add debug text)
+        self.debugHud = DebugHud(self)
+        if self.lock_ortho:
+            self.debugHud.add_text("ORTHO LOCKED")
+
         # Get user input
         self.handle_ui_events()
         self.mouse.update()
 
-        # Create the debug HUD
-        self.debugHud = DebugHud(self)
 
 
         # Clear screen
