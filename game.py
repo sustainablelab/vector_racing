@@ -390,7 +390,13 @@ class Game:
         # Draw a tick mark at every grid intersection along the x-component
         lineSeg = LineSeg(self.lineSeg.start, self.mouse.coords['grid'])
         tick_len = small_radius
-        for i in range(abs(lineSeg.vector[0])):
+        if self.lock_ortho:
+            # If ortho-locked, show tick-mark at arrow tip
+            xrange_stop = abs(lineSeg.vector[0])+1
+        else:
+            # If not ortho-locked, do not show the last x tick mark (it's at the x,y components vertex)
+            xrange_stop = abs(lineSeg.vector[0])
+        for i in range(1, xrange_stop):
             x = lineSeg.start[0] + signum(lineSeg.vector[0])*i
             y = lineSeg.start[1]
             pix_start = xfm_grid_to_pix((x,y), self.graphPaper, self.surfs['surf_game_art'])
@@ -471,7 +477,7 @@ class Game:
         # Find the size of one grid box
         self.grid_size = self.graphPaper.get_box_size(self.surfs['surf_game_art'])
 
-        if self.lineSeg.start:
+        if self.lineSeg.is_started:
             # Draw a line from start to the dot if I started a line segment
             self.draw_started_lineSeg()
         else:
