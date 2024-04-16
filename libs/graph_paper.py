@@ -34,6 +34,7 @@ class GraphPaper:
         # Set defaults in case update() is never called
         self.N = 20
         self.margin = 10
+        self.show_paper = True
 
     def get_box_size(self, surf:pygame.Surface) -> tuple:
         """Return the size of one grid box in pixel coordinates as (w,h)

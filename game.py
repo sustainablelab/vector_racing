@@ -27,6 +27,9 @@
 [x] Display an arrow head at the end of the line segment being drawn (will use this later for visually representing vectors)
 [x] Display number label for x and y components of the line segment being drawn
 [x] F10 toggles ortho lock
+[x] Save game state to file
+    * Convert game state to JSON
+[x] Load game state from file
 [ ] I don't like the similarity in these names: geometry.Line and LineSeg
 """
 
@@ -35,6 +38,7 @@ import sys
 from pathlib import Path
 import atexit
 import logging
+import json
 from dataclasses import dataclass
 import os
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"          # Set pygame env var to hide "Hello" msg
@@ -57,7 +61,7 @@ class Mouse:
 
     def update(self) -> None:
         pix_mpos = pygame.mouse.get_pos()
-        if self.game.lineSeg.start and self.game.lock_ortho:
+        if self.game.lineSeg.start and self.game.settings['setting_lock_ortho']:
             # Get the start of the line segment in pixel coordinates
             pix_start = self.game.graphPaper.xfm_to_pix(self.game.lineSeg.start, self.game.surfs['surf_game_art'])
             pix_mpos = list(pix_mpos)                   # Make this mutable
@@ -237,8 +241,8 @@ class Game:
         # Set up surfaces
         self.surfs = {}
         # Set aspect ratio and size of game art
-        # w = 16; h = 16; scale = 40
-        w = 29; h = 16; scale = 50
+        w = 16; h = 16; scale = 40
+        # w = 29; h = 16; scale = 50
         self.window = Window((scale*w,scale*h))
         ### Surface((width, height), flags=0, Surface) -> Surface
         self.surfs['surf_game_art'] = pygame.Surface(self.window.size, flags=0)
@@ -251,17 +255,88 @@ class Game:
         self.surfs['surf_draw'] = pygame.Surface(self.surfs['surf_game_art'].get_size(), flags=pygame.SRCALPHA)
 
         # Game data
-        self.lock_ortho = False
+        self.settings = {}
+        self.settings['setting_lock_ortho'] = False
         self.graphPaper = GraphPaper(self)
         self.graphPaper.update(N=40, margin=10, show_paper=False)
         self.grid_size = self.graphPaper.get_box_size(self.surfs['surf_game_art'])
         self.lineSeg = LineSeg()                        # An empty line segment
         self.lineSegs = LineSegs()                      # An empty history of line segments
-        # self.lineSegs = []                              # An empty list of line segments
         self.mouse = Mouse(self)
 
         # FPS
         self.clock = pygame.time.Clock()
+
+    def save(self, path) -> None:
+        """Save lineSegs to file.
+
+        lineSegs.history is a list of LineSeg.
+        I need to convert this into something JSON can serialize
+
+            TypeError: Object of type LineSeg is not JSON serializable
+
+        See https://docs.python.org/3/library/json.html#py-to-json-table
+        JSON encodable types are:
+        - dict
+            - dict keys must be str, int, or float
+        - list, tuple
+        - str
+        - int, float
+        - True, False
+        - None
+
+        So, I have these choices:
+        Choice 1. Do not use 'json.dump()' to save the game data. Roll my own.
+            Con: Rolling my own format for saving data is probably a rabbit hole.
+        Choice 2. Learn how to set up a JSONEncoder.default() method to return a serializable object for a LineSeg.
+            Con: This sounds like a Python rabbit hole.
+        Choice 3. Change my data structures for game data to be one of the JSON encodable types.
+            Con: I shouldn't bend my design to meet this requirement, unless doing so improves my design.
+        Choice 4. Write a serializer that first encodes the game data to the JSON encodable types.
+            Con: I have to write a serializer/deserializer.
+
+        I think choice 4 is probably the best route.
+        """
+        with open(path, 'w') as fp:
+            # json.dump({'lineSegs': {
+            #     'history':self.lineSegs.history,
+            #     'head':self.lineSegs.head
+            #     }}, fp)
+            # Serialize
+            game_data = {}
+            game_data['lineSegs'] = {}
+            game_data['lineSegs']['history'] = []
+            for lineSeg in self.lineSegs.history:
+                game_data['lineSegs']['history'].append((lineSeg.start, lineSeg.end))
+            json.dump({'settings':self.settings,
+                       'graphPaper':{
+                           'N':self.graphPaper.N,
+                           'margin':self.graphPaper.margin,
+                           'show_paper':self.graphPaper.show_paper
+                           },
+                       'lineSegs':{
+                           'head':self.lineSegs.head,
+                           'history':game_data['lineSegs']['history']
+                           },
+                       },
+                      fp) # , indent=4)
+            logger.debug(f"Game saved to \"{path}\"")
+
+    def load(self, path) -> None:
+        with open(path, 'r') as fp:
+            game_data = json.load(fp)
+        logger.debug(f"Game loaded from \"{path}\"")
+        # Deserialize
+        self.settings = game_data['settings']
+        self.graphPaper.N = game_data['graphPaper']['N']
+        self.graphPaper.margin = game_data['graphPaper']['margin']
+        self.graphPaper.show_paper = game_data['graphPaper']['show_paper']
+        self.lineSegs = LineSegs()
+        for lineSeg in game_data['lineSegs']['history']:
+            start = lineSeg[0]
+            end = lineSeg[1]
+            self.lineSegs.record(LineSeg(start,end))
+        self.lineSegs.head = game_data['lineSegs']['head']
 
     def run(self) -> None:
         while True: self.game_loop()
@@ -281,7 +356,7 @@ class Game:
             case pygame.K_p:
                 self.graphPaper.show_paper = not self.graphPaper.show_paper
             case pygame.K_F10:
-                self.lock_ortho = not self.lock_ortho
+                self.settings['setting_lock_ortho'] = not self.settings['setting_lock_ortho']
             case pygame.K_ESCAPE:
                 # Clear the active line segment.
                 self.lineSeg = LineSeg()
@@ -289,6 +364,14 @@ class Game:
                 self.lineSegs.undo()
             case pygame.K_r:
                 self.lineSegs.redo()
+            case pygame.K_s:
+                if kmod & pygame.KMOD_CTRL:
+                    logger.debug("Save game (WIP)")
+                    self.save('game_state.json')
+            case pygame.K_l:
+                if kmod & pygame.KMOD_CTRL:
+                    logger.debug("Load game (WIP)")
+                    self.load('game_state.json')
 
     def handle_ui_events(self) -> None:
         for event in pygame.event.get():
@@ -390,7 +473,7 @@ class Game:
         # Draw a tick mark at every grid intersection along the x-component
         lineSeg = LineSeg(self.lineSeg.start, self.mouse.coords['grid'])
         tick_len = small_radius
-        if self.lock_ortho:
+        if self.settings['setting_lock_ortho']:
             # If ortho-locked, show tick-mark at arrow tip
             xrange_stop = abs(lineSeg.vector[0])+1
         else:
@@ -458,7 +541,7 @@ class Game:
 
         # Create the debug HUD (create this first so everything after can add debug text)
         self.debugHud = DebugHud(self)
-        if self.lock_ortho:
+        if self.settings['setting_lock_ortho']:
             self.debugHud.add_text("ORTHO LOCKED")
 
         # Get user input
@@ -597,7 +680,6 @@ class Game:
         # TODO: end line where arrow head starts
         line_rect = pygame.draw.line(self.surfs['surf_draw'], color, line.start, line.end, width)
         self.render_rect_area(line_rect)
-
 
     def render_dot(self, center:tuple, radius:int, color:Color) -> None:
         """Render a filled-in circle on the game art with pygame.draw.circle().
