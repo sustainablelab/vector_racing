@@ -30,6 +30,9 @@
 [x] Save game state to file
     * Convert game state to JSON
 [x] Load game state from file
+    * Convert game state from JSON back to game objects
+[x] Toggle grid on/off with 'g'
+[x] Toggle DebugHud on/off with 'F2'
 [ ] I don't like the similarity in these names: geometry.Line and LineSeg
 """
 
@@ -257,8 +260,9 @@ class Game:
         # Game data
         self.settings = {}
         self.settings['setting_lock_ortho'] = False
+        self.settings['setting_show_debugHud'] = True
         self.graphPaper = GraphPaper(self)
-        self.graphPaper.update(N=40, margin=10, show_paper=False)
+        self.graphPaper.update(N=40, margin=10, show_paper=False, show_grid=True)
         self.grid_size = self.graphPaper.get_box_size(self.surfs['surf_game_art'])
         self.lineSeg = LineSeg()                        # An empty line segment
         self.lineSegs = LineSegs()                      # An empty history of line segments
@@ -312,7 +316,8 @@ class Game:
                        'graphPaper':{
                            'N':self.graphPaper.N,
                            'margin':self.graphPaper.margin,
-                           'show_paper':self.graphPaper.show_paper
+                           'show_paper':self.graphPaper.show_paper,
+                           'show_grid':self.graphPaper.show_grid,
                            },
                        'lineSegs':{
                            'head':self.lineSegs.head,
@@ -331,6 +336,7 @@ class Game:
         self.graphPaper.N = game_data['graphPaper']['N']
         self.graphPaper.margin = game_data['graphPaper']['margin']
         self.graphPaper.show_paper = game_data['graphPaper']['show_paper']
+        self.graphPaper.show_grid = game_data['graphPaper']['show_grid']
         self.lineSegs = LineSegs()
         for lineSeg in game_data['lineSegs']['history']:
             start = lineSeg[0]
@@ -355,6 +361,10 @@ class Game:
                     self.graphPaper.N = min(self.graphPaper.N + 1, 40)
             case pygame.K_p:
                 self.graphPaper.show_paper = not self.graphPaper.show_paper
+            case pygame.K_g:
+                self.graphPaper.show_grid = not self.graphPaper.show_grid
+            case pygame.K_F2:
+                self.settings['setting_show_debugHud'] = not self.settings['setting_show_debugHud']
             case pygame.K_F10:
                 self.settings['setting_lock_ortho'] = not self.settings['setting_lock_ortho']
             case pygame.K_ESCAPE:
@@ -538,9 +548,9 @@ class Game:
         self.render_dot(started_line.start, radius=small_radius, color=Color(255,0,0,150))
 
     def game_loop(self) -> None:
-
         # Create the debug HUD (create this first so everything after can add debug text)
         self.debugHud = DebugHud(self)
+        self.debugHud.is_visible = self.settings['setting_show_debugHud']
         if self.settings['setting_lock_ortho']:
             self.debugHud.add_text("ORTHO LOCKED")
 
@@ -601,10 +611,11 @@ class Game:
         self.debugHud.add_text(f"N: {self.graphPaper.N}, grid_size: {self.grid_size} pixels")
         self.debugHud.add_text(f"{vectors_str}")
 
-        if self.graphPaper.show_paper:
-            self.debugHud.render(self.colors['color_debug_hud_dark'])
-        else:
-            self.debugHud.render(self.colors['color_debug_hud_light'])
+        if self.debugHud.is_visible:
+            if self.graphPaper.show_paper:
+                self.debugHud.render(self.colors['color_debug_hud_dark'])
+            else:
+                self.debugHud.render(self.colors['color_debug_hud_light'])
 
         # Draw to the OS Window
         pygame.display.update()

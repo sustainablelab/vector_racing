@@ -35,6 +35,7 @@ class GraphPaper:
         self.N = 20
         self.margin = 10
         self.show_paper = True
+        self.show_grid = True
 
     def get_box_size(self, surf:pygame.Surface) -> tuple:
         """Return the size of one grid box in pixel coordinates as (w,h)
@@ -50,7 +51,7 @@ class GraphPaper:
         """
         return xfm_grid_to_pix(point, self, surf)
 
-    def update(self, N:int, margin:int, show_paper:bool) -> None:
+    def update(self, N:int, margin:int, show_paper:bool, show_grid:bool) -> None:
         """Set N vertical and N horizontal grid lines.
 
         N -- graph paper has N vertical lines and N horizontal lines
@@ -59,6 +60,7 @@ class GraphPaper:
         self.N = N
         self.margin = margin
         self.show_paper = show_paper
+        self.show_grid = show_grid
 
     def calculate_graph_lines(self, surf:pygame.Surface, N:int, margin:int) -> list:
         """Return list of Lines: N vertical and N horizontal grid lines.
@@ -115,16 +117,17 @@ class GraphPaper:
             # Color the background "graph paper blue"
             surf.fill(self.colors['color_graph_paper'])
 
-        # Calculate graph lines
-        graph_lines = self.calculate_graph_lines(surf, self.N, self.margin)
+        if self.show_grid:
+            # Calculate graph lines
+            graph_lines = self.calculate_graph_lines(surf, self.N, self.margin)
 
-        # Draw graph lines
-        line_width = 3
-        for line in graph_lines:
-            self.game.render_line(line, self.colors['color_graph_lines'], line_width)
+            # Draw graph lines
+            line_width = 3
+            for line in graph_lines:
+                self.game.render_line(line, self.colors['color_graph_lines'], line_width)
 
-        # Clean up
-        self.game.render_clean()
+            # Clean up
+            self.game.render_clean()
 
 def xfm_pix_to_grid(point:tuple, graphPaper:GraphPaper, surf:pygame.Surface) -> tuple:
     """Return the point in grid coordinates.

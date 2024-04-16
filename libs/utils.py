@@ -142,9 +142,10 @@ class Text:
                       )
 
 class DebugHud:
-    def __init__(self, game, ):
+    def __init__(self, game):
         self.game = game
         self.debug_text = ""
+        self.is_visible = True
 
     def clear_text(self) -> None:
         self.debug_text = ""
