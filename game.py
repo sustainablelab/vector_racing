@@ -33,6 +33,10 @@
     * Convert game state from JSON back to game objects
 [x] Toggle grid on/off with 'g'
 [x] Toggle DebugHud on/off with 'F2'
+[x] Refactor draw_started_lineSeg() into smaller reusable functions
+[ ] Refactor draw_started_lineSeg() to take a lineSeg instead of using mouse position
+[ ] Toggle show/hide text on left side of screen
+    * When visible, resize grid to make room for the text
 [ ] I don't like the similarity in these names: geometry.Line and LineSeg
 """
 
@@ -419,34 +423,25 @@ class Game:
                 case _:
                     logger.debug(f"Ignored event: {pygame.event.event_name(event.type)}")
 
-    def draw_started_lineSeg(self) -> None:
-        # TODO: refactor this function
+    def draw_vector_xy_components(self, start:tuple, end:tuple, color:Color) -> None:
+        """Draw from start to end as a vector with x and y components.
 
-        # Define the started line segment
-        lineSeg = LineSeg(start=self.lineSeg.start, end=self.mouse.coords['grid'])
-        # TODO: use lineSeg.vector to orient the vector arrow head
+        start -- (x,y) in grid coordinates
+        end -- (x,y) in grid coordinates
+        color -- color for line art work
+        """
+        lineSeg = LineSeg(start,end)
+        # Xfm to pixel coordinates
+        pix_start = self.graphPaper.xfm_to_pix(start, self.surfs['surf_game_art'])
+        pix_end = self.graphPaper.xfm_to_pix(end, self.surfs['surf_game_art'])
 
-        # Convert lineSeg.start grid coordinates to pixel coordinates
-        pix_start = self.graphPaper.xfm_to_pix(lineSeg.start, self.surfs['surf_game_art'])
+        # Define a line from start to end
+        line = Line(pix_start, pix_end)
 
-        # Create a line from the start to the current mouse position
-        started_line = Line(pix_start, self.mouse.coords['pixel'])
+        # Draw the x component of the vector
+        xline = Line(line.start, (line.end[0],line.start[1]))
+        self.render_line(xline, color, width=1)
 
-        # Set dot radii based on the grid_size
-        big_radius = int(0.5*0.5*self.grid_size[0])
-        small_radius = int(0.5*big_radius)
-
-
-        ### Draw x and y components
-        pix_end = self.mouse.coords['pixel']
-        # Set color of x and y components
-        if self.graphPaper.show_paper:
-            line_color = self.colors['color_debug_hud_dark']
-        else:
-            line_color = self.colors['color_debug_hud_light']
-        # Draw x component
-        xline = Line(started_line.start, (started_line.end[0],started_line.start[1]))
-        self.render_line(xline, line_color, width=1)
         # Label x component
         xlabel = Text((0,0), font_size=max(self.grid_size[0], self.grid_size[1]), sys_font="Roboto Mono")
         xlabel.update(f"{lineSeg.vector[0]}")
@@ -460,10 +455,11 @@ class Game:
             xlabel.pos = (xline.midpoint[0] - xlabel_width/2, xline.midpoint[1])
         # Render the xlabel only if the x-component is not zero
         if lineSeg.vector[0] != 0:
-            xlabel.render(self.surfs['surf_game_art'], line_color)
-        # Draw y component
-        yline = Line((started_line.end[0],started_line.start[1]), started_line.end)
-        self.render_line(yline, line_color, width=1)
+            xlabel.render(self.surfs['surf_game_art'], color)
+
+        # Draw the y component of the vector
+        yline = Line((line.end[0],line.start[1]), line.end)
+        self.render_line(yline, color, width=1)
         # Label y component
         ylabel = Text((0,0), font_size=max(self.grid_size[0], self.grid_size[1]), sys_font="Roboto Mono")
         ylabel.update(f"{lineSeg.vector[1]}")
@@ -477,12 +473,12 @@ class Game:
             ylabel.pos = (yline.midpoint[0] + ylabel.font.size("0")[0]/2, yline.midpoint[1] - ylabel_height/2)
         # Render the ylabel only if the y-component is not zero
         if lineSeg.vector[1] != 0:
-            ylabel.render(self.surfs['surf_game_art'], line_color)
+            ylabel.render(self.surfs['surf_game_art'], color)
 
         ### Draw little tick marks along these lines to indicate measuring (like a ruler has tick marks)
         # Draw a tick mark at every grid intersection along the x-component
-        lineSeg = LineSeg(self.lineSeg.start, self.mouse.coords['grid'])
-        tick_len = small_radius
+        tick_len = int(0.5*0.5*0.5*self.grid_size[0])
+        # Only show tick mark at arrow tip if ortho lock is turned on
         if self.settings['setting_lock_ortho']:
             # If ortho-locked, show tick-mark at arrow tip
             xrange_stop = abs(lineSeg.vector[0])+1
@@ -490,61 +486,90 @@ class Game:
             # If not ortho-locked, do not show the last x tick mark (it's at the x,y components vertex)
             xrange_stop = abs(lineSeg.vector[0])
         for i in range(1, xrange_stop):
-            x = lineSeg.start[0] + signum(lineSeg.vector[0])*i
-            y = lineSeg.start[1]
+            x = start[0] + signum(lineSeg.vector[0])*i
+            y = start[1]
             pix_start = xfm_grid_to_pix((x,y), self.graphPaper, self.surfs['surf_game_art'])
             line = Line((pix_start[0],pix_start[1]-tick_len),
                         (pix_start[0],pix_start[1]+tick_len))
-            self.render_line(line, line_color, width=1)
+            self.render_line(line, color, width=1)
         # Draw a tick mark at every grid intersection along the y-component
         for i in range(abs(lineSeg.vector[1])):
-            x = lineSeg.end[0]
-            y = lineSeg.end[1] - signum(lineSeg.vector[1])*i
+            x = end[0]
+            y = end[1] - signum(lineSeg.vector[1])*i
             pix_start = xfm_grid_to_pix((x,y), self.graphPaper, self.surfs['surf_game_art'])
             line = Line((pix_start[0]-tick_len,pix_start[1]),
                         (pix_start[0]+tick_len,pix_start[1]))
-            self.render_line(line, line_color, width=1)
+            self.render_line(line, color, width=1)
 
-        # Set color of the line drawn with the mouse
+    def render_line_as_vector(self, line:Line, color:Color, width:int) -> None:
+        """Render a line on the game art with an arrow head at the end point.
+        line -- Line(start, end)
+        color -- pygame.Color(R,G,B,A)
+        width -- line thickness in pixels
+        """
+        # Find the minimum dimension of one grid box and scale it by s
+        s = 2/3
+        a = int(round(min(self.grid_size[0], self.grid_size[1])*s))
+        # Use 'a' to calculate a scaling factor for the line.vector
+        if line.start != line.end:
+            k = math.sqrt((a**2)/(line.vector[0]**2 + line.vector[1]**2))
+        else:
+            # If the vector is zero, scaling factor is 0 (avoid divide by zero)
+            k = 0
+        # Start the arrow head back from the end of the line by a distance of 1/2 the min grid dimension
+        arrow_head_base = (line.end[0] - k*line.vector[0], line.end[1] - k*line.vector[1])
+        # Get the perpendicular vector
+        pvec = (-1*line.vector[1], line.vector[0])
+        # Form the arrow head with the tip at the end of the line and the
+        # other two points of the triangle calc from pvec and arrow_head_base
+        arrow_head_points = [ line.end,     # Arrow head tip
+                              (arrow_head_base[0] - k*pvec[0]/2, arrow_head_base[1] - k*pvec[1]/2),
+                              (arrow_head_base[0] + k*pvec[0]/2, arrow_head_base[1] + k*pvec[1]/2)
+                              ]
+        arrow_rect = pygame.draw.polygon(self.surfs['surf_draw'], color, arrow_head_points)
+        self.render_rect_area(arrow_rect)
+        # Draw the line segment
+        arrow_shaft = Line(line.start, arrow_head_base)
+        self.render_line(arrow_shaft, color, width)
+
+    def draw_mouse_as_snapped_dot(self, color:Color) -> None:
+        # Set dot radii based on the grid_size
+        big_radius = int(0.5*0.5*self.grid_size[0])
+        # Draw a dot at the grid intersection closest to the mouse
+        self.mouse.render_snap_dot(radius=big_radius, color=color)
+
+    def draw_started_lineSeg(self, draw_as_vector:bool) -> None:
+        # Set colors based on paper background on/off
         if self.graphPaper.show_paper:
+            # Set color of x and y components
+            xy_commponent_color = self.colors['color_debug_hud_dark']
+            # Set color of the line drawn with the mouse
             line_color = self.colors['color_line_started_dark']
         else:
+            # Set color of x and y components
+            xy_commponent_color = self.colors['color_debug_hud_light']
+            # Set color of the line drawn with the mouse
             line_color = self.colors['color_line_started_light']
 
+        self.draw_vector_xy_components(
+                start=self.lineSeg.start,
+                end=self.mouse.coords['grid'],
+                color=xy_commponent_color)
 
-        DRAW_AS_VECTOR = True
-        if DRAW_AS_VECTOR:
-            # Find the minimum dimension of one grid box and scale it by s
-            s = 2/3
-            a = int(round(min(self.grid_size[0], self.grid_size[1])*s))
-            # Use 'a' to calculate a scaling factor for the started_line.vector
-            if started_line.start != started_line.end:
-                k = math.sqrt((a**2)/(started_line.vector[0]**2 + started_line.vector[1]**2))
-            else:
-                # If the vector is zero, scaling factor is 0 (avoid divide by zero)
-                k = 0
-            # Start the arrow head back from the end of the line by a distance of 1/2 the min grid dimension
-            arrow_head_base = (started_line.end[0] - k*started_line.vector[0], started_line.end[1] - k*started_line.vector[1])
-            # Get the perpendicular vector
-            pvec = (-1*started_line.vector[1], started_line.vector[0])
-            # Form the arrow head with the tip at the end of the line and the
-            # other two points of the triangle calc from pvec and arrow_head_base
-            arrow_head_points = [ started_line.end,     # Arrow head tip
-                                  (arrow_head_base[0] - k*pvec[0]/2, arrow_head_base[1] - k*pvec[1]/2),
-                                  (arrow_head_base[0] + k*pvec[0]/2, arrow_head_base[1] + k*pvec[1]/2)
-                                  ]
-            arrow_rect = pygame.draw.polygon(self.surfs['surf_draw'], line_color, arrow_head_points)
-            self.render_rect_area(arrow_rect)
-            # Draw the line segment
-            arrow_shaft = Line(started_line.start, arrow_head_base)
-            self.render_line(arrow_shaft, line_color, width=5)
+        # Create a line from the start to the current mouse position
+        pix_start = self.graphPaper.xfm_to_pix(self.lineSeg.start, self.surfs['surf_game_art'])
+        started_line = Line(pix_start, self.mouse.coords['pixel'])
+        if draw_as_vector:
+            # Draw the line segment as a vector
+            self.render_line_as_vector(started_line, line_color, width=5)
         else:
             # Draw the line segment
             self.render_line(started_line, line_color, width=5)
-            # Draw a dot at the grid intersection closest to the mouse
-            self.mouse.render_snap_dot(radius=big_radius, color=Color(0,200,255,150))
+            # Draw a big dot at the grid intersection closest to the mouse
+            self.draw_mouse_as_snapped_dot(Color(0,200,255,150))
 
         # Draw a dot at the start of the vector
+        small_radius = int(0.5*0.5*0.5*self.grid_size[0])
         self.render_dot(started_line.start, radius=small_radius, color=Color(255,0,0,150))
 
     def game_loop(self) -> None:
@@ -558,8 +583,6 @@ class Game:
         self.handle_ui_events()
         self.mouse.update()
 
-
-
         # Clear screen
         # self.surfs['surf_os_window'].fill(self.colors['color_os_window_bgnd'])
         self.surfs['surf_game_art'].fill(self.colors['color_game_art_bgnd'])
@@ -572,12 +595,9 @@ class Game:
 
         if self.lineSeg.is_started:
             # Draw a line from start to the dot if I started a line segment
-            self.draw_started_lineSeg()
+            self.draw_started_lineSeg(draw_as_vector=True)
         else:
-            # Set dot radii based on the grid_size
-            big_radius = int(0.5*0.5*self.grid_size[0])
-            # Draw a dot at the grid intersection closest to the mouse
-            self.mouse.render_snap_dot(radius=big_radius, color=Color(255,0,0,150))
+            self.draw_mouse_as_snapped_dot(Color(255,0,0,150))
 
         # Draw the vectors
         for i,l in enumerate(self.lineSegs.history):
@@ -664,31 +684,6 @@ class Game:
         width -- line thickness in pixels
         """
         ### line(surface, color, start, end, width=1) -> Rect
-        line_rect = pygame.draw.line(self.surfs['surf_draw'], color, line.start, line.end, width)
-        self.render_rect_area(line_rect)
-
-    def render_line_as_vector(self, line:Line, color:Color, width:int) -> None:
-        """Render a Line on the game art with pygame.draw.line().
-
-        line -- Line(start, end)
-        color -- pygame.Color(R,G,B,A)
-        width -- line thickness in pixels
-        """
-        # Set arrow head based on the grid_size
-        a = int(0.5*0.5*self.grid_size[0])
-
-        ### Draw Arrow Head
-        ### polygon(surface, color, points, width=0) -> Rect
-        p1 = (line.end[0]-a,line.end[1]-a)
-        p2 = (line.end[0]-a,line.end[1]+a)
-        p3 = (line.end[0],line.end[1])
-        # TODO: rotate arrow head to point in direction of vector
-        arrow_rect = pygame.draw.polygon(self.surfs['surf_draw'], color, [p1,p2,p3,p1])
-        self.render_rect_area(arrow_rect)
-
-        ### Draw Line
-        ### line(surface, color, start, end, width=1) -> Rect
-        # TODO: end line where arrow head starts
         line_rect = pygame.draw.line(self.surfs['surf_draw'], color, line.start, line.end, width)
         self.render_rect_area(line_rect)
 
