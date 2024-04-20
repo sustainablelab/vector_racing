@@ -231,6 +231,7 @@ class Game:
     def __init__(self):
         pygame.init()                                   # Init pygame -- quit in shutdown
         pygame.font.init()                              # Initialize the font module
+        pygame.display.set_caption("Vector racing game")
 
         os.environ["PYGAME_BLEND_ALPHA_SDL2"] = "1"     # Use SDL2 alpha blending
         # os.environ["SDL_VIDEO_WINDOW_POS"] = "800,0"    # Position window in upper right
@@ -387,6 +388,24 @@ class Game:
                     logger.debug("Load game (WIP)")
                     self.load('game_state.json')
 
+    def handle_mousebuttondown(self) -> None:
+        if self.lineSeg.is_started:
+            # Ending a line segment.
+            # This mouse click is the end point.
+            self.lineSeg.end = self.mouse.coords['grid']
+            # Store this line segment.
+            self.lineSegs.record(self.lineSeg)
+            # Reset the active line segment
+            self.lineSeg = LineSeg()
+            CONTINUE_DRAWING = True
+            if CONTINUE_DRAWING:
+                # Record this as the start
+                self.lineSeg.start = self.mouse.coords['grid']
+        else:
+            # Starting a line segment.
+            # This mouse click is the start point.
+            self.lineSeg.start = self.mouse.coords['grid']
+
     def handle_ui_events(self) -> None:
         for event in pygame.event.get():
             match event.type:
@@ -394,6 +413,7 @@ class Game:
                     self.window.handle_WINDOWRESIZED(event)
                     self.surfs['surf_game_art'] = pygame.Surface(self.window.size, flags=0)
                     self.surfs['surf_draw'] = pygame.Surface(self.surfs['surf_game_art'].get_size(), flags=pygame.SRCALPHA)
+
                 case pygame.QUIT: sys.exit()
                 case pygame.KEYDOWN: self.handle_keydown(event)
                 case pygame.MOUSEMOTION:
@@ -401,22 +421,7 @@ class Game:
                     pass
                 case pygame.MOUSEBUTTONDOWN:
                     # logger.debug("LEFT CLICK PRESS")
-                    if self.lineSeg.is_started:
-                        # Ending a line segment.
-                        # This mouse click is the end point.
-                        self.lineSeg.end = self.mouse.coords['grid']
-                        # Store this line segment.
-                        self.lineSegs.record(self.lineSeg)
-                        # Reset the active line segment
-                        self.lineSeg = LineSeg()
-                        CONTINUE_DRAWING = True
-                        if CONTINUE_DRAWING:
-                            # Record this as the start
-                            self.lineSeg.start = self.mouse.coords['grid']
-                    else:
-                        # Starting a line segment.
-                        # This mouse click is the start point.
-                        self.lineSeg.start = self.mouse.coords['grid']
+                    self.handle_mousebuttondown()
                 case pygame.MOUSEBUTTONUP:
                     # logger.debug("LEFT CLICK RELEASE")
                     pass
