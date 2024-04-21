@@ -10,7 +10,7 @@
 [x] 'Space' draws next iteration
 [x] Draw all lineSegs in lineSegs.history as vectors (lines with arrow heads)
 [x] 'F10' toggles gravity on/off
-[ ] Draw force vector (gravity)
+[x] Draw force vector (gravity)
     - Ways I might do this:
         1. Store force vector along with final lineSeg at each step
         2. Store force vector along with initial lineSeg at each step (then compute final lineSeg as needed)
@@ -19,8 +19,17 @@
     - So, really 'LineSegs' is not line segments, it is History. And
       'self.history' is not history, it is just line segments.
     - Restructure as 'History' with attributes 'line_segments', 'head', and 'size'
+    [x] Change class 'LineSegs' to 'GameHistory'
+    [x] Change attribute 'LineSegs.history' to 'GameHistory.line_segments'
+    [x] Add attribute 'GameHistory.force_vectors'
+    [x] Record force_vectors
+[x] Make a 'Shift+R' to restart
 [ ] Undo past initial velocity vector should put me back to drawing an initial velocity vector
-[ ] Make an 'r' to restart
+[ ] Make a firehose mode: instead of pressing space, toggle on firehose to see the path: drag out the mouse until the path hits the target!
+[ ] Let vectors go off screen!
+    - Fix rendering "bug" that is clamping them to the top of the screen.
+    - Fix rendering "bug" that is clamping them to the side of the screen.
+    - It's as if I accidentally made some amazing collision detection....
 [ ] Randomize cannon location
 [ ] Show location of target
 [ ] Randomize target location
@@ -140,66 +149,79 @@ class LineSeg:
         """
         return (self.start != None) and (self.end != None)
 
-class LineSegs:
-    """All the line segments drawn so far.
+class GameHistory:
+    """All the line segments drawn and force vectors applied so far.
 
-    history:list -- all line segments in the history
-    head:int -- a "play head" that points at a line segment in the history
-    undo() -- move "head" backward in history
-    redo() -- move "head" forward in history
+    head:int -- a "play head" that points at a specific iteration in the game history
+    size:int -- length of all lists in the history (all lists are always the same size)
+    line_segments:list -- all line segments in the game history
+    force_vectors:list -- all force vectors in the game history
+    undo() -- move "head" backward in game history
+    redo() -- move "head" forward in game history
 
-    >>> lineSegs = LineSegs()
-    >>> print(lineSegs.head)
+    Start an empty Game History
+    >>> gameHistory = GameHistory()
+    >>> print(gameHistory.head)
     None
-    >>> lineSegs.record(LineSeg((1,2),(3,5)))
-    >>> print(lineSegs.head)
+
+    Record three iterations of history
+    >>> gameHistory.record(LineSeg((1,2),(3,5)))
+    >>> print(gameHistory.head)
     0
-    >>> lineSegs.record(LineSeg((-1,-2),(3,5)))
-    >>> lineSegs.history
+    >>> gameHistory.record(LineSeg((-1,-2),(3,5)))
+    >>> gameHistory.line_segments
     [LineSeg(start=(1, 2), end=(3, 5)), LineSeg(start=(-1, -2), end=(3, 5))]
-    >>> print(lineSegs.head)
+    >>> print(gameHistory.head)
     1
-    >>> lineSegs.record(LineSeg((-1,-2),(3,5)))
-    >>> print(lineSegs.head)
+    >>> gameHistory.record(LineSeg((-1,-2),(3,5)))
+    >>> print(gameHistory.head)
     2
-    >>> lineSegs.undo()
-    >>> print(lineSegs.head)
+
+    Undo all three, redo all three
+    >>> gameHistory.undo()
+    >>> print(gameHistory.head)
     1
-    >>> lineSegs.undo()
-    >>> print(lineSegs.head)
+    >>> gameHistory.undo()
+    >>> print(gameHistory.head)
     0
-    >>> lineSegs.undo()
-    >>> print(lineSegs.head)
+    >>> gameHistory.undo()
+    >>> print(gameHistory.head)
     None
-    >>> lineSegs.redo()
-    >>> print(lineSegs.head)
+    >>> gameHistory.redo()
+    >>> print(gameHistory.head)
     0
-    >>> lineSegs.redo()
-    >>> print(lineSegs.head)
+    >>> gameHistory.redo()
+    >>> print(gameHistory.head)
     1
-    >>> lineSegs.redo()
-    >>> print(lineSegs.head)
+    >>> gameHistory.redo()
+    >>> print(gameHistory.head)
     2
-    >>> lineSegs.redo()
-    >>> print(lineSegs.head)
+
+    Redo again (play-head already at end) and play-head does not move.
+    >>> gameHistory.redo()
+    >>> print(gameHistory.head)
     2
     """
     def __init__(self):
-        self.history = []                               # Initialize: empty list of line segments
+        self.line_segments = []                         # Initialize: empty list of line segments
+        self.force_vectors = []                         # Initialize: empty list of force vectors
         self.head = None                                # Initialize: head points at nothing
         self.size = 0                                   # Initialize: history size is 0
 
-    def record(self, l:LineSeg) -> None:
+    def record(self, l:LineSeg, v:tuple) -> None:
         if (self.head == None):
             # Prune the future before appending
             self.size = 0
-            self.history = []
+            self.line_segments = []
+            self.force_vectors = []
         elif (self.head < self.size-1):
             # Prune the future before appending
             self.size = self.head+1
-            self.history = self.history[0:self.size]
+            self.line_segments = self.line_segments[0:self.size]
+            self.force_vectors = self.force_vectors[0:self.size]
         # Normal append
-        self.history.append(l)                          # Add this line segment to the history
+        self.line_segments.append(l)                    # Add this line segment to the history
+        self.force_vectors.append(v)                    # Add this force vector to the history
         self.size += 1                                  # History size increases by 1
         self.move_head_forward()
 
@@ -217,6 +239,7 @@ class LineSegs:
 
     def redo(self) -> None:
         self.move_head_forward()
+
 
 class Game:
     def __init__(self):
@@ -255,20 +278,12 @@ class Game:
         self.surfs['surf_draw'] = pygame.Surface(self.surfs['surf_game_art'].get_size(), flags=pygame.SRCALPHA)
 
         # Game data
-        self.define_settings()
+        self.mouse = Mouse(self)
         self.graphPaper = GraphPaper(self)
         self.graphPaper.update(N=40, margin=10, show_paper=False, show_grid=True)
         self.grid_size = self.graphPaper.get_box_size(self.surfs['surf_game_art'])
-        self.lineSeg = LineSeg()                        # An empty line segment
-        self.lineSegs = LineSegs()                      # An empty history of line segments
-        self.mouse = Mouse(self)
+        self.define_initial_state()
 
-        # Start the game with a cannon shot
-        self.lineSeg.start = (0,4)
-        # Store game data related to the cannon game
-        self.cannons = {}
-        # Initial velocity vector set by player
-        self.cannons['cannon_initial_velocity'] = (0,0)
 
         # FPS
         self.clock = pygame.time.Clock()
@@ -279,10 +294,22 @@ class Game:
         self.settings['setting_show_debugHud'] = True
         self.settings['setting_show_gravity'] = True
 
-    def save(self, path) -> None:
-        """Save lineSegs to file.
+    def define_initial_state(self) -> None:
+        self.define_settings()
+        self.lineSeg = LineSeg()                        # An empty line segment
+        self.forceVector = (0,0)                        # A zero-vector force-vector
+        self.gameHistory = GameHistory()                # An empty history of line segments and force vectors
+        # Start the game with a cannon shot
+        self.lineSeg.start = (0,4)
+        # Store game data related to the cannon game
+        self.cannons = {}
+        # Initial velocity vector set by player
+        self.cannons['cannon_initial_velocity'] = (0,0)
 
-        lineSegs.history is a list of LineSeg.
+    def save(self, path) -> None:
+        """Save gameHistory to file.
+
+        gameHistory.line_segments is a list of LineSeg.
         I need to convert this into something JSON can serialize
 
             TypeError: Object of type LineSeg is not JSON serializable
@@ -316,10 +343,10 @@ class Game:
             #     }}, fp)
             # Serialize
             game_data = {}
-            game_data['lineSegs'] = {}
-            game_data['lineSegs']['history'] = []
-            for lineSeg in self.lineSegs.history:
-                game_data['lineSegs']['history'].append((lineSeg.start, lineSeg.end))
+            game_data['gameHistory'] = {}
+            game_data['gameHistory']['history'] = []
+            for lineSeg in self.gameHistory.line_segments:
+                game_data['gameHistory']['history'].append((lineSeg.start, lineSeg.end))
             json.dump({'settings':self.settings,
                        'graphPaper':{
                            'N':self.graphPaper.N,
@@ -327,9 +354,9 @@ class Game:
                            'show_paper':self.graphPaper.show_paper,
                            'show_grid':self.graphPaper.show_grid,
                            },
-                       'lineSegs':{
-                           'head':self.lineSegs.head,
-                           'history':game_data['lineSegs']['history']
+                       'gameHistory':{
+                           'head':self.gameHistory.head,
+                           'history':game_data['gameHistory']['history']
                            },
                        },
                       fp) # , indent=4)
@@ -345,12 +372,12 @@ class Game:
         self.graphPaper.margin = game_data['graphPaper']['margin']
         self.graphPaper.show_paper = game_data['graphPaper']['show_paper']
         self.graphPaper.show_grid = game_data['graphPaper']['show_grid']
-        self.lineSegs = LineSegs()
-        for lineSeg in game_data['lineSegs']['history']:
+        self.gameHistory = GameHistory()
+        for lineSeg in game_data['gameHistory']['history']:
             start = lineSeg[0]
             end = lineSeg[1]
-            self.lineSegs.record(LineSeg(start,end))
-        self.lineSegs.head = game_data['lineSegs']['head']
+            self.gameHistory.record(LineSeg(start,end))
+        self.gameHistory.head = game_data['gameHistory']['head']
 
     def run(self) -> None:
         while True: self.game_loop()
@@ -379,9 +406,14 @@ class Game:
                 # Clear the active line segment.
                 self.lineSeg = LineSeg()
             case pygame.K_u:
-                self.lineSegs.undo()
+                self.gameHistory.undo()
             case pygame.K_r:
-                self.lineSegs.redo()
+                if kmod & pygame.KMOD_SHIFT:
+                    # 'R' - reset
+                    self.define_initial_state()
+                else:
+                    # 'r' - redo
+                    self.gameHistory.redo()
             case pygame.K_s:
                 if kmod & pygame.KMOD_CTRL:
                     logger.debug("Save game (WIP)")
@@ -393,11 +425,10 @@ class Game:
             case pygame.K_SPACE:
                 logger.debug("Perform next iteration of game")
                 # Check if there is any history
-                if self.lineSegs.head != None:
+                if self.gameHistory.head != None:
                     # Take the last line-seg
-                    history = self.lineSegs.history
-                    head = self.lineSegs.head
-                    last_l = history[head]
+                    head = self.gameHistory.head
+                    last_l = self.gameHistory.line_segments[head]
                     # Make a next line-seg
                     next_l = LineSeg(last_l.start,last_l.end)
                     # Translate next line-seg to head of last line-seg
@@ -406,17 +437,11 @@ class Game:
                     next_l.end = (next_l.end[0] + last_l.vector[0],
                                     next_l.end[1] + last_l.vector[1])
                     ### Apply a force vector
-                    # Define the force
-                    if self.settings['setting_gravity_on']:
-                        force_v = (0,-1)                # Gravity
-                    else:
-                        force_v = (0,0)                 # No Gravity
                     # Add force to prev velocity to get new vector
-                    next_l.end = (next_l.end[0] + force_v[0],
-                                  next_l.end[1] + force_v[1])
+                    next_l.end = (next_l.end[0] + self.forceVector[0],
+                                  next_l.end[1] + self.forceVector[1])
                     # Record the next line seg
-                    self.lineSegs.record(next_l)
-
+                    self.gameHistory.record(next_l, self.forceVector)
 
     def handle_mousebuttondown(self) -> None:
         if self.lineSeg.is_finished:
@@ -430,7 +455,7 @@ class Game:
             # This mouse click is the end point.
             self.lineSeg.end = self.mouse.coords['grid']
             # Store this line segment.
-            self.lineSegs.record(self.lineSeg)
+            self.gameHistory.record(self.lineSeg, self.forceVector)
             CONTINUE_DRAWING = False
             if CONTINUE_DRAWING:
                 # Reset the active line segment
@@ -543,7 +568,7 @@ class Game:
         width -- line thickness in pixels
         """
         # Find the minimum dimension of one grid box and scale it by s
-        s = 2/3
+        s = 2/5
         a = int(round(min(self.grid_size[0], self.grid_size[1])*s))
         # Use 'a' to calculate a scaling factor for the line.vector
         if line.start != line.end:
@@ -613,8 +638,10 @@ class Game:
         self.debugHud.is_visible = self.settings['setting_show_debugHud']
         if self.settings['setting_gravity_on']:
             self.debugHud.add_text("GRAVITY: ON")
+            self.forceVector = (0,-1)
         else:
             self.debugHud.add_text("GRAVITY: OFF")
+            self.forceVector = (0,0)
         self.debugHud.add_text(f"Initial velocity: {self.cannons['cannon_initial_velocity']}")
 
         # Get user input
@@ -647,35 +674,45 @@ class Game:
             self.draw_mouse_as_snapped_dot(Color(255,0,0,150))
 
         # Draw the vectors
-        for i,l in enumerate(self.lineSegs.history):
+        for i,(l,f) in enumerate(zip(self.gameHistory.line_segments, self.gameHistory.force_vectors)):
             # Draw nothing if play-head points to nothing
-            if self.lineSegs.head == None: break
+            if self.gameHistory.head == None: break
             # Only draw lines up until the play-head
-            if i > self.lineSegs.head: break
+            if i > self.gameHistory.head: break
             # Set color of the lines in the history
             if self.graphPaper.show_paper:
                 # Brown if paper is visible
-                line_color = Color(60,30,0,120)
+                velocity_line_color = Color(60,30,0,120)
+                force_line_color = Color(200,30,0,120)
             else:
                 # Yellow if paper is invisible
-                line_color = Color(210,200,0,120)
-            # Convert this line segment to a line in pixel coordinates
+                velocity_line_color = Color(210,200,0,120)
+                force_line_color = Color(200,30,0,120)
+            # Convert velocity vector line segment to a line in pixel coordinates
             pix_start = xfm_grid_to_pix(l.start, self.graphPaper, self.surfs['surf_game_art'])
             pix_end = xfm_grid_to_pix(l.end, self.graphPaper, self.surfs['surf_game_art'])
             line = Line(pix_start, pix_end)
             # Draw the line segment
             # self.render_line(line, line_color, width=5)
-            self.render_line_as_vector(line, line_color, width=5)
+            self.render_line_as_vector(line, velocity_line_color, width=5)
+            # Convert force vector line segment to a line in pixel coordinates
+            l = LineSeg(start=l.end, end=(l.end[0]+f[0],l.end[1]+f[1]))
+            pix_start = xfm_grid_to_pix(l.start, self.graphPaper, self.surfs['surf_game_art'])
+            pix_end = xfm_grid_to_pix(l.end, self.graphPaper, self.surfs['surf_game_art'])
+            line = Line(pix_start, pix_end)
+            # Draw the line segment
+            # self.render_line(line, line_color, width=5)
+            self.render_line_as_vector(line, force_line_color, width=5)
 
 
         # Draw game art to OS window
         ### blit(source, dest, area=None, special_flags=0) -> Rect
         self.surfs['surf_os_window'].blit(self.surfs['surf_game_art'], (0,0))
 
-        # List vectors as strings as they are added by the user:
-        vectors_str_list = ["Vector: " + str(l.vector) for l in self.lineSegs.history]
+        # List vector velocities and forces as strings as they are added by the user:
+        vectors_str_list = ["Velocity vector: " + str(l.vector) + ", Force vector: " + str(f) for l,f in zip(self.gameHistory.line_segments,self.gameHistory.force_vectors)]
         vectors_str = "\n".join(vectors_str_list)
-        self.debugHud.add_text(f"Mouse: {self.mouse.coords['grid']} | lineSegs.head: {self.lineSegs.head}")
+        self.debugHud.add_text(f"Mouse: {self.mouse.coords['grid']} | gameHistory.head: {self.gameHistory.head}")
         self.debugHud.add_text(f"N: {self.graphPaper.N}, grid_size: {self.grid_size} pixels")
         self.debugHud.add_text(f"{vectors_str}")
 
