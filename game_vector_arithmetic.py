@@ -4,6 +4,8 @@
 
 [x] F11 toggles full screen
 [x] Start in full screen -- set is_fullscreen=True when instantiating OsWindow
+[x] Resize window with mouse (when window is not fullscreen) and game art surface resizes
+[x] Game art fills OS window in full screen
 """
 
 from pathlib import Path
@@ -44,7 +46,7 @@ class OsWindow:
 
         self.surfs['surf_os_window'] = pygame.display.set_mode(self.os_window.size, self.os_window.flags)
 
-    Since that is in 'define_surfaces(OsWindow)', just call that function. The
+    Since that is in 'define_surfaces(OsWindow)', just call that function (and redefine self.surfs). The
     other surfaces that depend on the OsWindow size need to be updated anyway.
     """
     def __init__(self, size:tuple, is_fullscreen:bool=False):
@@ -105,7 +107,7 @@ class OsWindow:
         """
         self._is_fullscreen = not self.is_fullscreen
         logger.debug(f"FULLSCREEN: {self.is_fullscreen}")
-        self._set_size_and_flags() # Set size and flags based on is_to fullscreen or windowed
+        self._set_size_and_flags() # Set size and flags based on fullscreen or windowed
 
     def handle_WINDOWRESIZED(self, event) -> None:
         """Track size of resized OS window in self._windowed_size"""
@@ -148,7 +150,7 @@ class Game:
         os.environ["PYGAME_BLEND_ALPHA_SDL2"] = "1"     # Use SDL2 alpha blending
         # os.environ["SDL_VIDEO_WINDOW_POS"] = "1000,0"   # Position window in upper right
 
-        self.os_window = OsWindow((60*16, 60*9), is_fullscreen=True) # Track OS Window size and flags
+        self.os_window = OsWindow((60*16, 60*9), is_fullscreen=False) # Track OS Window size and flags
 
         self.surfs = define_surfaces(self.os_window)    # Dict of Pygame Surfaces (including pygame.display)
 
@@ -161,7 +163,13 @@ class Game:
     def game_loop(self) -> None:
         self.handle_ui_events()
 
+        # Paint a background
+        bgnd_color = pygame.color.Color(100,100,100)
+        self.surfs['surf_game_art'].fill(bgnd_color)
+
         # Draw to the OS window
+        ### pygame.Surface.blit(source, dest, area=None, special_flags=0) -> Rect
+        self.surfs['surf_os_window'].blit(self.surfs['surf_game_art'], (0,0))
         pygame.display.update()
 
         ### clock.tick(framerate=0) -> milliseconds
@@ -205,7 +213,8 @@ class Game:
             case pygame.K_q: sys.exit()                 # q - Quit
             case pygame.K_F11:
                 self.os_window.toggle_fullscreen() # F11 - toggle fullscreen
-                define_surfaces(self.os_window)
+                self.surfs = define_surfaces(self.os_window)
+                logger.debug(f"game art: {self.surfs['surf_game_art'].get_size()}")
 
             case _:
                 logger.debug(f"{event.unicode}")
@@ -214,7 +223,6 @@ class Game:
         """See 'define_surfaces()'"""
         self.surfs['surf_game_art'] = pygame.Surface(self.os_window.size, flags=pygame.SRCALPHA)
         self.surfs['surf_draw'] = pygame.Surface(self.os_window.size, flags=pygame.SRCALPHA)
-
 
 if __name__ == '__main__':
     print(f"Run {Path(__file__).name}")
