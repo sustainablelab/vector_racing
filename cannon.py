@@ -24,8 +24,9 @@
     [x] Add attribute 'GameHistory.force_vectors'
     [x] Record force_vectors
 [x] Make a 'Shift+R' to restart
-[ ] Undo past initial velocity vector should put me back to drawing an initial velocity vector
-[ ] Make a firehose mode: instead of pressing space, toggle on firehose to see the path: drag out the mouse until the path hits the target!
+[ ] Make a 'Help'
+[x] Undo past initial velocity vector should put me back to drawing an initial velocity vector
+[ ] Make a future mode: instead of pressing space, toggle on show_future to see the path: drag out the mouse until the path hits the target!
 [ ] Let vectors go off screen!
     - Fix rendering "bug" that is clamping them to the top of the screen.
     - Fix rendering "bug" that is clamping them to the side of the screen.
@@ -229,12 +230,13 @@ class GameHistory:
         if self.head == None:
             self.head = 0                               # Point head at first element
         else:
-            self.head = min(self.size-1, self.head+1)     # Point head at next element
+            self.head = min(self.size-1, self.head+1)   # Point head at next element
 
     def undo(self) -> None:
         match self.head:
             case None: pass
-            case 0: self.head = None
+            case 0:
+                self.head = None
             case _: self.head -= 1
 
     def redo(self) -> None:
@@ -292,7 +294,7 @@ class Game:
         self.settings = {}
         self.settings['setting_gravity_on'] = True
         self.settings['setting_show_debugHud'] = True
-        self.settings['setting_show_gravity'] = True
+        self.settings['setting_show_future'] = False
 
     def define_initial_state(self) -> None:
         self.define_settings()
@@ -400,6 +402,8 @@ class Game:
                 self.graphPaper.show_grid = not self.graphPaper.show_grid
             case pygame.K_F2:
                 self.settings['setting_show_debugHud'] = not self.settings['setting_show_debugHud']
+            case pygame.K_F3:
+                self.settings['setting_show_future'] = not self.settings['setting_show_future']
             case pygame.K_F10:
                 self.settings['setting_gravity_on'] = not self.settings['setting_gravity_on']
             case pygame.K_ESCAPE:
@@ -407,10 +411,13 @@ class Game:
                 self.lineSeg = LineSeg()
             case pygame.K_u:
                 self.gameHistory.undo()
+                if self.gameHistory.head == None:
+                    self.lineSeg.end = None             # Let player pick new initial velocity
             case pygame.K_r:
                 if kmod & pygame.KMOD_SHIFT:
-                    # 'R' - reset
-                    self.define_initial_state()
+                    # 'R' - reset (like hitting undo many times)
+                    self.gameHistory.head = None
+                    self.lineSeg.end = None
                 else:
                     # 'r' - redo
                     self.gameHistory.redo()
@@ -642,6 +649,10 @@ class Game:
         else:
             self.debugHud.add_text("GRAVITY: OFF")
             self.forceVector = (0,0)
+        if self.settings['setting_show_future']:
+            self.debugHud.add_text("FUTURE: ON")
+        else:
+            self.debugHud.add_text("FUTURE: OFF")
         self.debugHud.add_text(f"Initial velocity: {self.cannons['cannon_initial_velocity']}")
 
         # Get user input
@@ -659,10 +670,10 @@ class Game:
         self.grid_size = self.graphPaper.get_box_size(self.surfs['surf_game_art'])
 
         if self.lineSeg.is_started:
-            # Draw a line from start to the dot if I started a line segment
+            # Draw a vector from start to the mouse and show the xy components
             self.draw_started_lineSeg(draw_as_vector=True)
         if self.lineSeg.is_finished:
-            # Draw the xy components of the initial velocity vector
+            # Only draw the xy components of the initial velocity vector (don't draw the vector itself)
             if self.graphPaper.show_paper:
                 xy_commponent_color = self.colors['color_debug_hud_dark']
             else:
@@ -673,13 +684,9 @@ class Game:
             # Draw the mouse location
             self.draw_mouse_as_snapped_dot(Color(255,0,0,150))
 
-        # Draw the vectors
-        for i,(l,f) in enumerate(zip(self.gameHistory.line_segments, self.gameHistory.force_vectors)):
-            # Draw nothing if play-head points to nothing
-            if self.gameHistory.head == None: break
-            # Only draw lines up until the play-head
-            if i > self.gameHistory.head: break
-            # Set color of the lines in the history
+        if self.settings['setting_show_future']:
+            ### Draw all the future velocity vectors based on the initial velocity vector
+            # Set up colors (TODO: move this to an @property)
             if self.graphPaper.show_paper:
                 # Brown if paper is visible
                 velocity_line_color = Color(60,30,0,120)
@@ -688,22 +695,61 @@ class Game:
                 # Yellow if paper is invisible
                 velocity_line_color = Color(210,200,0,120)
                 force_line_color = Color(200,30,0,120)
-            # Convert velocity vector line segment to a line in pixel coordinates
+            # Get the initial velocity vector
+            init_vel = LineSeg()
+            init_vel.start = self.lineSeg.start
+            if self.lineSeg.is_started:
+                init_vel.end = self.mouse.coords['grid']
+            if self.lineSeg.is_finished:
+                init_vel.end = self.lineSeg.end
+            # Convert initial velocity vector to pixel coordinates
+            l = init_vel
             pix_start = xfm_grid_to_pix(l.start, self.graphPaper, self.surfs['surf_game_art'])
             pix_end = xfm_grid_to_pix(l.end, self.graphPaper, self.surfs['surf_game_art'])
             line = Line(pix_start, pix_end)
-            # Draw the line segment
-            # self.render_line(line, line_color, width=5)
+            # Draw the initial velocity
             self.render_line_as_vector(line, velocity_line_color, width=5)
-            # Convert force vector line segment to a line in pixel coordinates
-            l = LineSeg(start=l.end, end=(l.end[0]+f[0],l.end[1]+f[1]))
+            # Translate force vector to end of initial velocity
+            f = self.forceVector
+            l = LineSeg(start=l.end, end=(l.end[0]+f[0], l.end[1]+f[1]))
+            # Convert (translated) force vector to pixel coordinates
             pix_start = xfm_grid_to_pix(l.start, self.graphPaper, self.surfs['surf_game_art'])
             pix_end = xfm_grid_to_pix(l.end, self.graphPaper, self.surfs['surf_game_art'])
             line = Line(pix_start, pix_end)
-            # Draw the line segment
-            # self.render_line(line, line_color, width=5)
+            # Draw the force vector
             self.render_line_as_vector(line, force_line_color, width=5)
 
+        else: # Only show the past
+            # Draw the vectors
+            for i,(l,f) in enumerate(zip(self.gameHistory.line_segments, self.gameHistory.force_vectors)):
+                # Draw nothing if play-head points to nothing
+                if self.gameHistory.head == None: break
+                # Only draw lines up until the play-head
+                if i > self.gameHistory.head: break
+                # Set color of the lines in the history
+                if self.graphPaper.show_paper:
+                    # Brown if paper is visible
+                    velocity_line_color = Color(60,30,0,120)
+                    force_line_color = Color(200,30,0,120)
+                else:
+                    # Yellow if paper is invisible
+                    velocity_line_color = Color(210,200,0,120)
+                    force_line_color = Color(200,30,0,120)
+                # Convert velocity vector line segment to a line in pixel coordinates
+                pix_start = xfm_grid_to_pix(l.start, self.graphPaper, self.surfs['surf_game_art'])
+                pix_end = xfm_grid_to_pix(l.end, self.graphPaper, self.surfs['surf_game_art'])
+                line = Line(pix_start, pix_end)
+                # Draw the line segment
+                # self.render_line(line, line_color, width=5)
+                self.render_line_as_vector(line, velocity_line_color, width=5)
+                # Convert force vector line segment to a line in pixel coordinates
+                l = LineSeg(start=l.end, end=(l.end[0]+f[0],l.end[1]+f[1]))
+                pix_start = xfm_grid_to_pix(l.start, self.graphPaper, self.surfs['surf_game_art'])
+                pix_end = xfm_grid_to_pix(l.end, self.graphPaper, self.surfs['surf_game_art'])
+                line = Line(pix_start, pix_end)
+                # Draw the line segment
+                # self.render_line(line, line_color, width=5)
+                self.render_line_as_vector(line, force_line_color, width=5)
 
         # Draw game art to OS window
         ### blit(source, dest, area=None, special_flags=0) -> Rect
