@@ -6,6 +6,7 @@
 [x] Start in full screen -- set is_fullscreen=True when instantiating OsWindow
 [x] Resize window with mouse (when window is not fullscreen) and game art surface resizes
 [x] Game art fills OS window in full screen
+[x] Add DebugHud
 """
 
 from pathlib import Path
@@ -23,6 +24,55 @@ def shutdown() -> None:
     # Clean up GUI
     pygame.font.quit()                                  # Uninitialize the font module
     pygame.quit()                                       # Uninitialize all pygame modules
+
+class Text:
+    def __init__(self, pos:tuple, font_size:int, sys_font:str):
+        self.pos = pos
+        self.font_size = font_size
+        self.sys_font = sys_font
+        self.antialias = True
+
+        if not pygame.font.get_init(): pygame.font.init()
+
+        self.font = pygame.font.SysFont(self.sys_font, self.font_size)
+
+        self.text_lines = []
+
+    def update(self, text:str) -> None:
+        """Update text. Split multiline text into a list of lines of text."""
+        self.text_lines = text.split("\n")
+
+    def render(self, surf:pygame.Surface, color:Color) -> None:
+        """Render text on the surface."""
+        for i, line in enumerate(self.text_lines):
+            ### render(text, antialias, color, background=None) -> Surface
+            text_surf = self.font.render(line, self.antialias, color)
+            surf.blit(text_surf,
+                      (self.pos[0], self.pos[1] + i*self.font.get_linesize()),
+                      special_flags=pygame.BLEND_ALPHA_SDL2
+                      )
+
+class DebugHud:
+    def __init__(self, game):
+        self.game = game
+        self.debug_text = ""
+        self.text = Text((0,0), font_size=15, sys_font="Roboto Mono")
+
+    def add_text(self, debug_text:str):
+        """Add another line of debug text.
+
+        :param debug_text:str -- add this string to the HUD
+
+        Debug text always has FPS and Mouse.
+        Each call to add_text() adds a line below that.
+        """
+        self.debug_text += f"\n{debug_text}"
+
+    def render(self, color=Color(255,255,255)) -> None:
+        mpos = pygame.mouse.get_pos()
+        self.text.update(f"FPS: {self.game.clock.get_fps():0.1f} | Window: {self.game.os_window.size} | Mouse: {mpos}"
+                         f"{self.debug_text}")
+        self.text.render(self.game.surfs['surf_os_window'], color)
 
 class OsWindow:
     """OS window information.
@@ -115,6 +165,11 @@ class OsWindow:
         self._windowed_size = (event.x, event.y)
         self._set_size_and_flags()
 
+def define_settings(game) -> dict:
+    settings = {}
+    settings['setting_debug'] = False
+    return settings
+
 def define_surfaces(os_window:OsWindow) -> dict:
     """Return dictionary of pygame Surfaces.
 
@@ -152,6 +207,7 @@ class Game:
 
         self.os_window = OsWindow((60*16, 60*9), is_fullscreen=False) # Track OS Window size and flags
 
+        self.settings = define_settings(self)           # Dict of game settings
         self.surfs = define_surfaces(self.os_window)    # Dict of Pygame Surfaces (including pygame.display)
 
         # FPS
@@ -161,15 +217,28 @@ class Game:
         while True: self.game_loop()
 
     def game_loop(self) -> None:
+        # DebugHud
+        if self.settings['setting_debug']:
+            self.debug_hud = DebugHud(self)
+        else:
+            self.debug_hud = None
+
+        # UI
         self.handle_ui_events()
 
-        # Paint a background
+        # Game art
         bgnd_color = pygame.color.Color(100,100,100)
         self.surfs['surf_game_art'].fill(bgnd_color)
 
-        # Draw to the OS window
+        # Copy game art to OS window
         ### pygame.Surface.blit(source, dest, area=None, special_flags=0) -> Rect
         self.surfs['surf_os_window'].blit(self.surfs['surf_game_art'], (0,0))
+
+        # Add overlays to OS window
+        if self.debug_hud:
+            self.debug_hud.render()
+
+        # Draw to the actual OS window
         pygame.display.update()
 
         ### clock.tick(framerate=0) -> milliseconds
@@ -215,6 +284,9 @@ class Game:
                 self.os_window.toggle_fullscreen() # F11 - toggle fullscreen
                 self.surfs = define_surfaces(self.os_window)
                 logger.debug(f"game art: {self.surfs['surf_game_art'].get_size()}")
+            case pygame.K_F2:
+                self.settings['setting_debug'] = not self.settings['setting_debug']
+                logger.debug(f"Debug: {self.settings['setting_debug']}")
 
             case _:
                 logger.debug(f"{event.unicode}")
