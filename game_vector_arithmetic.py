@@ -2,7 +2,8 @@
 # vim: set fileencoding=utf-8 :
 """Graph paper on my screen for demonstrating vectors and addition.
 
-[ ] Start in full screen
+[x] F11 toggles full screen
+[x] Start in full screen -- set is_fullscreen=True when instantiating OsWindow
 """
 
 from pathlib import Path
@@ -144,7 +145,7 @@ class Game:
         os.environ["PYGAME_BLEND_ALPHA_SDL2"] = "1"     # Use SDL2 alpha blending
         # os.environ["SDL_VIDEO_WINDOW_POS"] = "1000,0"   # Position window in upper right
 
-        self.os_window = OsWindow((60*16, 60*9))        # Track OS Window size
+        self.os_window = OsWindow((60*16, 60*9), is_fullscreen=True) # Track OS Window size and flags
 
         self.surfs = define_surfaces(self.os_window)    # Dict of Pygame Surfaces (including pygame.display)
 
