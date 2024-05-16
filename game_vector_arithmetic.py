@@ -44,7 +44,8 @@ class OsWindow:
 
         self.surfs['surf_os_window'] = pygame.display.set_mode(self.os_window.size, self.os_window.flags)
 
-    For convenience, I made Game.update_os_window_surface()
+    Since that is in 'define_surfaces(OsWindow)', just call that function. The
+    other surfaces that depend on the OsWindow size need to be updated anyway.
     """
     def __init__(self, size:tuple, is_fullscreen:bool=False):
         # Set initial sizes for windowed and fullscreen
@@ -117,6 +118,12 @@ def define_surfaces(os_window:OsWindow) -> dict:
 
     :param os_window:OsWindow -- defines OS Window 'size' and 'flags'
     :return dict -- {'surf_name': pygame.Surface, ...}
+
+    Call this to create the initial window.
+
+    Call this again when toggling fullscreen.
+
+    Do not call this when resizing the window.
     """
     surfs = {}                                      # Dict of Pygame Surfaces
 
@@ -131,11 +138,7 @@ def define_surfaces(os_window:OsWindow) -> dict:
     # Temporary drawing surface -- draw on this, blit the drawn portion, then clear this.
     surfs['surf_draw'] = pygame.Surface(surfs['surf_game_art'].get_size(), flags=pygame.SRCALPHA)
 
-    # This surface is populated later when Game instantiates RomanizedChars
-    surfs['surf_romanized_chars'] = None
-
     return surfs
-
 
 class Game:
     def __init__(self):
@@ -154,6 +157,7 @@ class Game:
 
     def run(self) -> None:
         while True: self.game_loop()
+
     def game_loop(self) -> None:
         self.handle_ui_events()
 
@@ -176,8 +180,8 @@ class Game:
                 case pygame.VIDEOEXPOSE: pass
                 case pygame.WINDOWHIDDEN: pass
                 case pygame.WINDOWMOVED: pass
-                case pygame.WINDOWSIZECHANGED: pass
-                case pygame.VIDEORESIZE: pass
+                # case pygame.WINDOWSIZECHANGED: pass
+                # case pygame.VIDEORESIZE: pass
                 case pygame.WINDOWSHOWN: pass
                 case pygame.WINDOWFOCUSGAINED: pass
                 case pygame.WINDOWFOCUSLOST: pass
@@ -186,7 +190,10 @@ class Game:
                 case pygame.KEYUP: pass
                 # Handle these events
                 case pygame.QUIT: sys.exit()
-                case pygame.WINDOWRESIZED: self.os_window.handle_WINDOWRESIZED(event)
+                case pygame.WINDOWRESIZED:
+                    self.os_window.handle_WINDOWRESIZED(event) # Update OS window size
+                    self.update_surfaces() # Update surfaces affected by OS window size
+                    logger.debug(f"game art: {self.surfs['surf_game_art'].get_size()}")
                 case pygame.KEYDOWN: self.handle_keydown(event)
                 # Log any other events
                 case _:
@@ -198,13 +205,15 @@ class Game:
             case pygame.K_q: sys.exit()                 # q - Quit
             case pygame.K_F11:
                 self.os_window.toggle_fullscreen() # F11 - toggle fullscreen
-                self.update_os_window_surface()
+                define_surfaces(self.os_window)
 
             case _:
                 logger.debug(f"{event.unicode}")
 
-    def update_os_window_surface(self) -> None:
-        self.surfs['surf_os_window'] = pygame.display.set_mode(self.os_window.size, self.os_window.flags)
+    def update_surfaces(self) -> None:
+        """See 'define_surfaces()'"""
+        self.surfs['surf_game_art'] = pygame.Surface(self.os_window.size, flags=pygame.SRCALPHA)
+        self.surfs['surf_draw'] = pygame.Surface(self.os_window.size, flags=pygame.SRCALPHA)
 
 
 if __name__ == '__main__':
