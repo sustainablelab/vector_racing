@@ -18,9 +18,12 @@
     * 'r' resets the xfm matrix and recenters the grid
 [x] Re-center grid when toggling between fullscreen and windowed
 [x] Draw mouse dot snapped to grid
-[ ] Click to draw a vector
+[x] Click to draw a vector
+    * [x] Click to start a line segment
+    * [x] Draw an arrow-head
 """
 
+import math
 from pathlib import Path
 from dataclasses import dataclass
 import sys
@@ -224,171 +227,9 @@ def define_colors() -> dict:
     colors['color_brown_light'] = Color(50,30,0)
     colors['color_mouse_dot_dark'] = Color(200,50,50)
     colors['color_mouse_dot_light'] = Color(200,50,50)
+    colors['color_mouse_vector_dark'] = Color(255,255,0)
+    colors['color_mouse_vector_light'] = Color(50,30,0,120)
     return colors
-
-class Game:
-    def __init__(self):
-        pygame.init()                                   # Init pygame -- quit in shutdown
-        pygame.font.init()                              # Initialize the font module
-        pygame.mouse.set_visible(False)                 # Hide the OS mouse icon
-        pygame.display.set_caption("Vector arithmetic")
-
-        os.environ["PYGAME_BLEND_ALPHA_SDL2"] = "1"     # Use SDL2 alpha blending
-        # os.environ["SDL_VIDEO_WINDOW_POS"] = "1000,0"   # Position window in upper right
-
-        self.os_window = OsWindow((60*16, 60*9), is_fullscreen=False) # Track OS Window size and flags
-        self.surfs = define_surfaces(self.os_window)    # Dict of Pygame Surfaces (including pygame.display)
-        self.settings = define_settings()               # Dict of game settings
-        self.colors = define_colors()                   # Dict of pygame Colors
-
-        # Game Data
-        self.grid = Grid(self, N=40)
-
-        # FPS
-        self.clock = pygame.time.Clock()
-
-    def run(self) -> None:
-        while True: self.game_loop()
-
-    def game_loop(self) -> None:
-        # DebugHud
-        if self.settings['setting_debug']: self.debug_hud = DebugHud(self)
-        else: self.debug_hud = None
-
-        # Track mouse position in game coordinates
-        if self.debug_hud:
-            mpos_p = pygame.mouse.get_pos()             # Mouse in pixel coord sys
-            mpos_g = self.grid.xfm_pg(mpos_p)           # Mouse in game coord sys
-            self.debug_hud.add_text(f"Mouse (game): {mpos_g}")
-
-        # UI
-        self.handle_ui_events()
-
-        # Game art
-        self.surfs['surf_game_art'].fill(self.color_graph_paper_bgnd)
-        self.grid.draw(self.surfs['surf_game_art'])
-        self.draw_mouse_as_snapped_dot(self.surfs['surf_game_art'])
-
-
-        # Copy game art to OS window
-        ### pygame.Surface.blit(source, dest, area=None, special_flags=0) -> Rect
-        self.surfs['surf_os_window'].blit(self.surfs['surf_game_art'], (0,0))
-
-        # Add overlays to OS window
-        if self.debug_hud:
-            self.debug_hud.render()
-
-        # Draw to the actual OS window
-        pygame.display.update()
-
-        ### clock.tick(framerate=0) -> milliseconds
-        self.clock.tick(60)
-
-    def handle_ui_events(self) -> None:
-        for event in pygame.event.get():
-            match event.type:
-                # No use for these events yet
-                case pygame.AUDIODEVICEADDED: pass
-                case pygame.ACTIVEEVENT: pass
-                case pygame.MOUSEMOTION: pass
-                case pygame.WINDOWENTER: pass
-                case pygame.WINDOWLEAVE: pass
-                case pygame.WINDOWEXPOSED: pass
-                case pygame.VIDEOEXPOSE: pass
-                case pygame.WINDOWHIDDEN: pass
-                case pygame.WINDOWMOVED: pass
-                # case pygame.WINDOWSIZECHANGED: pass
-                # case pygame.VIDEORESIZE: pass
-                case pygame.WINDOWSHOWN: pass
-                case pygame.WINDOWFOCUSGAINED: pass
-                case pygame.WINDOWFOCUSLOST: pass
-                case pygame.WINDOWTAKEFOCUS: pass
-                case pygame.TEXTINPUT: pass
-                case pygame.KEYUP: pass
-                # Handle these events
-                case pygame.QUIT: sys.exit()
-                case pygame.WINDOWRESIZED:
-                    self.os_window.handle_WINDOWRESIZED(event) # Update OS window size
-                    self.update_surfaces() # Update surfaces affected by OS window size
-                    logger.debug(f"game art: {self.surfs['surf_game_art'].get_size()}")
-                    # Resize and recenter the grid
-                    self.grid.reset()
-                case pygame.KEYDOWN: self.handle_keydown(event)
-                case pygame.MOUSEWHEEL:
-                    ### {'flipped': False, 'x': 0, 'y': 1, 'precise_x': 0.0, 'precise_y': 1.0, 'touch': False, 'window': None}
-                    match event.y:
-                        case 1: self.grid.zoom_in()
-                        case -1: self.grid.zoom_out()
-                        case _: pass
-                # Log any other events
-                case _:
-                    logger.debug(f"Ignored event: {pygame.event.event_name(event.type)}")
-
-    def handle_keydown(self, event) -> None:
-        kmod = pygame.key.get_mods()                    # Which modifier keys are held
-        match event.key:
-            case pygame.K_q: sys.exit()                 # q - Quit
-            case pygame.K_F11:
-                self.os_window.toggle_fullscreen() # F11 - toggle fullscreen
-                self.surfs = define_surfaces(self.os_window)
-                logger.debug(f"game art: {self.surfs['surf_game_art'].get_size()}")
-                # Resize and recenter the grid
-                self.grid.reset()
-            case pygame.K_F2:
-                self.settings['setting_debug'] = not self.settings['setting_debug']
-                logger.debug(f"Debug: {self.settings['setting_debug']}")
-            case pygame.K_d: self.toggle_dark_mode()
-            case pygame.K_r: self.grid.reset()
-
-            case _:
-                logger.debug(f"{event.unicode}")
-
-    def update_surfaces(self) -> None:
-        """Call this after os_window handles WINDOWRESIZED event. See 'define_surfaces()'"""
-        self.surfs['surf_game_art'] = pygame.Surface(self.os_window.size, flags=pygame.SRCALPHA)
-        self.surfs['surf_draw'] = pygame.Surface(self.os_window.size, flags=pygame.SRCALPHA)
-
-    def toggle_dark_mode(self) -> None:
-        self.settings['setting_dark_mode'] = not self.settings['setting_dark_mode']
-
-    def draw_mouse_as_snapped_dot(self, surf:pygame.Surface) -> None:
-        mpos = pygame.mouse.get_pos()
-        grid_size = min(abs(self.grid.size[0]), abs(self.grid.size[1]))
-        radius = grid_size/3
-        # Xfm mouse position from pixel to grid with precision=0 to snap to grid
-        mpos_snapped_g = self.grid.xfm_pg(mpos, p=0)
-        # Xfm back to pixels to get "snapped" pixel coordinates
-        mpos_snapped_p = self.grid.xfm_gp(mpos_snapped_g)
-        ### circle(surface, color, center, radius) -> Rect
-        pygame.draw.circle(surf, self.color_mouse_dot, mpos_snapped_p, radius)
-
-    @property
-    def color_debug_hud(self) -> Color:
-        if self.settings['setting_dark_mode']:
-            return self.colors['color_debug_hud_dark']
-        else:
-            return self.colors['color_debug_hud_light']
-
-    @property
-    def color_graph_paper_bgnd(self) -> Color:
-        if self.settings['setting_dark_mode']:
-            return self.colors['color_graph_paper_bgnd_dark']
-        else:
-            return self.colors['color_graph_paper_bgnd_light']
-
-    @property
-    def color_graph_paper_lines(self) -> Color:
-        if self.settings['setting_dark_mode']:
-            return self.colors['color_graph_paper_lines_dark']
-        else:
-            return self.colors['color_graph_paper_lines_light']
-
-    @property
-    def color_mouse_dot(self) -> Color:
-        if self.settings['setting_dark_mode']:
-            return self.colors['color_mouse_dot_dark']
-        else:
-            return self.colors['color_mouse_dot_light']
 
 @dataclass
 class LineSeg:
@@ -399,12 +240,26 @@ class LineSeg:
     def vector(self) -> tuple:
         return (self.end[0] - self.start[0], self.end[1] - self.start[1])
 
+    @property
+    def is_started(self) -> bool:
+        """Return True if a line segment is started but not finished.
+
+        Implements this truth table:
+
+            start | end  | started
+            ----- | ---  | -------
+            None  | x    | False
+            !None | None | True
+            !None | !None| False
+        """
+        return (self.start != None) and (self.end == None)
+
 class Grid:
     """Define a grid of lines.
 
     :param N:int -- number of grid lines (grid is NxN)
     """
-    def __init__(self, game:Game, N:int):
+    def __init__(self, game, N:int):
         self.game = game
         self.N = N
         self.scale = 1.0 # zoom
@@ -418,10 +273,10 @@ class Grid:
         """
         # Define 2x2 transform
         # Use a top-down view
-        self.a = 20
+        self.a = 1
         self.b = 0
         self.c = 0
-        self.d = -20
+        self.d = -1
 
         # Define offset vector (in pixel coordinates)
         # Place origin at center of game art
@@ -443,7 +298,8 @@ class Grid:
         size_p = (a*size_g[0] + b*size_g[1], c*size_g[0] + d*size_g[1])
 
         # Add some margin
-        size_p = (abs(size_p[0]) + 20, abs(size_p[1]) + 20)
+        margin = 10
+        size_p = (abs(size_p[0]) + margin, abs(size_p[1]) + margin)
 
         scale_x = self.game.os_window.size[0]/size_p[0]
         scale_y = self.game.os_window.size[1]/size_p[1]
@@ -548,6 +404,278 @@ class Grid:
         size_p = (a*size_g[0] + b*size_g[1], c*size_g[0] + d*size_g[1])
 
         return size_p
+
+class Game:
+    def __init__(self):
+        pygame.init()                                   # Init pygame -- quit in shutdown
+        pygame.font.init()                              # Initialize the font module
+        pygame.mouse.set_visible(False)                 # Hide the OS mouse icon
+        pygame.display.set_caption("Vector arithmetic")
+
+        os.environ["PYGAME_BLEND_ALPHA_SDL2"] = "1"     # Use SDL2 alpha blending
+        # os.environ["SDL_VIDEO_WINDOW_POS"] = "1000,0"   # Position window in upper right
+
+        self.os_window = OsWindow((60*16, 60*9), is_fullscreen=False) # Track OS Window size and flags
+        self.surfs = define_surfaces(self.os_window)    # Dict of Pygame Surfaces (including pygame.display)
+        self.settings = define_settings()               # Dict of game settings
+        self.colors = define_colors()                   # Dict of pygame Colors
+
+        # Game Data
+        self.grid = Grid(self, N=40)
+        self.line_seg = LineSeg(start=None, end=None)
+        # self.force_vector = (0,0)
+        # self.game_history = GameHistory()
+
+        # FPS
+        self.clock = pygame.time.Clock()
+
+    def run(self) -> None:
+        while True: self.game_loop()
+
+    def game_loop(self) -> None:
+        # DebugHud
+        if self.settings['setting_debug']: self.debug_hud = DebugHud(self)
+        else: self.debug_hud = None
+
+        # Track mouse position in game coordinates
+        if self.debug_hud:
+            mpos_p = pygame.mouse.get_pos()             # Mouse in pixel coord sys
+            mpos_g = self.grid.xfm_pg(mpos_p)           # Mouse in game coord sys
+            self.debug_hud.add_text(f"Mouse (game): {mpos_g}")
+
+        # UI
+        self.handle_ui_events()
+
+        # Game art
+        self.surfs['surf_game_art'].fill(self.color_graph_paper_bgnd)
+        self.grid.draw(self.surfs['surf_game_art'])
+        self.draw_mouse_as_snapped_dot(self.surfs['surf_game_art'])
+        self.draw_mouse_vector(self.surfs['surf_game_art'])
+
+
+        # Copy game art to OS window
+        ### pygame.Surface.blit(source, dest, area=None, special_flags=0) -> Rect
+        self.surfs['surf_os_window'].blit(self.surfs['surf_game_art'], (0,0))
+
+        # Add overlays to OS window
+        if self.debug_hud:
+            self.debug_hud.render()
+
+        # Draw to the actual OS window
+        pygame.display.update()
+
+        ### clock.tick(framerate=0) -> milliseconds
+        self.clock.tick(60)
+
+    def handle_ui_events(self) -> None:
+        for event in pygame.event.get():
+            match event.type:
+                # No use for these events yet
+                case pygame.AUDIODEVICEADDED: pass
+                case pygame.ACTIVEEVENT: pass
+                case pygame.MOUSEMOTION: pass
+                case pygame.WINDOWENTER: pass
+                case pygame.WINDOWLEAVE: pass
+                case pygame.WINDOWEXPOSED: pass
+                case pygame.VIDEOEXPOSE: pass
+                case pygame.WINDOWHIDDEN: pass
+                case pygame.WINDOWMOVED: pass
+                # case pygame.WINDOWSIZECHANGED: pass
+                # case pygame.VIDEORESIZE: pass
+                case pygame.WINDOWSHOWN: pass
+                case pygame.WINDOWFOCUSGAINED: pass
+                case pygame.WINDOWFOCUSLOST: pass
+                case pygame.WINDOWTAKEFOCUS: pass
+                case pygame.TEXTINPUT: pass
+                case pygame.KEYUP: pass
+                case pygame.MOUSEBUTTONUP: pass
+                # Handle these events
+                case pygame.QUIT: sys.exit()
+                case pygame.WINDOWRESIZED:
+                    self.os_window.handle_WINDOWRESIZED(event) # Update OS window size
+                    self.update_surfaces() # Update surfaces affected by OS window size
+                    logger.debug(f"game art: {self.surfs['surf_game_art'].get_size()}")
+                    # Resize and recenter the grid
+                    self.grid.reset()
+                case pygame.KEYDOWN: self.handle_keydown(event)
+                case pygame.MOUSEWHEEL:
+                    ### {'flipped': False, 'x': 0, 'y': 1, 'precise_x': 0.0, 'precise_y': 1.0, 'touch': False, 'window': None}
+                    match event.y:
+                        case 1: self.grid.zoom_in()
+                        case -1: self.grid.zoom_out()
+                        case _: pass
+                case pygame.MOUSEBUTTONDOWN:
+                    match event.button:
+                        case 1:
+                            logger.debug("Left-click")
+                            self.handle_mousebuttondown_leftclick()
+                        case 2: logger.debug("Middle-click")
+                        case 3: logger.debug("Right-click")
+                        case 4: logger.debug("Mousewheel y=+1")
+                        case 5: logger.debug("Mousewheel y=-1")
+                        case 6: logger.debug("Logitech G602 Thumb button 6")
+                        case 7: logger.debug("Logitech G602 Thumb button 7")
+                        case _: logger.debug(event)
+                # Log any other events
+                case _:
+                    logger.debug(f"Ignored event: {pygame.event.event_name(event.type)}")
+
+    def handle_keydown(self, event) -> None:
+        kmod = pygame.key.get_mods()                    # Which modifier keys are held
+        match event.key:
+            case pygame.K_q: sys.exit()                 # q - Quit
+            case pygame.K_F11:
+                self.os_window.toggle_fullscreen() # F11 - toggle fullscreen
+                self.surfs = define_surfaces(self.os_window)
+                logger.debug(f"game art: {self.surfs['surf_game_art'].get_size()}")
+                # Resize and recenter the grid
+                self.grid.reset()
+            case pygame.K_F2:
+                self.settings['setting_debug'] = not self.settings['setting_debug']
+                logger.debug(f"Debug: {self.settings['setting_debug']}")
+            case pygame.K_d: self.toggle_dark_mode()
+            case pygame.K_r: self.grid.reset()
+
+            case _:
+                logger.debug(f"{event.unicode}")
+
+    def handle_mousebuttondown_leftclick(self) -> None:
+        mpos_g = self.grid.xfm_pg(pygame.mouse.get_pos())
+        if not self.line_seg.is_started:
+            self.line_seg.start = mpos_g
+        else:
+            self.line_seg.end = mpos_g
+            # TODO: store line segment.
+
+            # Reset active line segment to (start=None, end=None).
+            self.line_seg = LineSeg(start=None, end=None)
+
+            # Record this point as the new start.
+            self.line_seg.start = mpos_g
+            
+
+    def update_surfaces(self) -> None:
+        """Call this after os_window handles WINDOWRESIZED event. See 'define_surfaces()'"""
+        self.surfs['surf_game_art'] = pygame.Surface(self.os_window.size, flags=pygame.SRCALPHA)
+        self.surfs['surf_draw'] = pygame.Surface(self.os_window.size, flags=pygame.SRCALPHA)
+
+    def toggle_dark_mode(self) -> None:
+        self.settings['setting_dark_mode'] = not self.settings['setting_dark_mode']
+
+    def snap_to_grid(self, point:tuple) -> tuple:
+        """Snap a point in pixel coordinates to the grid.
+
+        point -- (x,y) in pixel coordinates
+
+        Return point in pixel coordinates, but snapped to the grid.
+        """
+        # Xfm position from pixel to grid with precision=0 to snap to grid
+        snapped_g = self.grid.xfm_pg(point, p=0)
+        # Xfm back to pixels to get "snapped" pixel coordinates
+        snapped_p = self.grid.xfm_gp(snapped_g)
+        return snapped_p
+
+    def draw_mouse_as_snapped_dot(self, surf:pygame.Surface) -> None:
+        # mpos = pygame.mouse.get_pos()
+        grid_size = min(abs(self.grid.size[0]), abs(self.grid.size[1]))
+        radius = grid_size/3
+        snapped = self.snap_to_grid(pygame.mouse.get_pos())
+        ### circle(surface, color, center, radius) -> Rect
+        pygame.draw.circle(surf, self.color_mouse_dot, snapped, radius)
+
+    def draw_mouse_vector(self, surf:pygame.Surface) -> None:
+        color = self.color_mouse_vector
+        if self.line_seg.is_started:
+            ### Draw a vector from self.line_seg.start to the grid-snapped mouse position
+            # Get the grid-snapped line segment in pixel coordinates
+            tail = self.grid.xfm_gp(self.line_seg.start)
+            head = self.snap_to_grid(pygame.mouse.get_pos())
+            l = LineSeg(start=tail, end=head)
+            # Draw line segment as a vector (a line with an arrow head)
+            self.draw_line_as_vector(surf, l, color)
+
+    def draw_line_as_vector(self, surf:pygame.Surface, l:LineSeg, color:Color) -> None:
+        """Draw line segment as a vector: a line with an arrow head.
+
+        surf -- draw on this pygame.Surface
+        l -- LineSeg(start=tail, end=head)
+        color -- pygame.Color(R,G,B)
+
+        Draw an arrow head:
+          An isosceles triangle with its tip at the vector head.
+
+        Draw an arrow shaft:
+          A thick line from the vector tail to the base of the arrow head.
+        """
+        # Get the vector from the line segment
+        v = l.vector
+        # Get the unit vector
+        v_dist = math.sqrt(v[0]**2 + v[1]**2)
+        # Use 'if/else' to avoid div by 0 (in case vector has length 0)
+        if v_dist == 0:
+            unit_v = (0,0)
+        else:
+            unit_v = (v[0]/v_dist, v[1]/v_dist)
+        # Get the perpendicular unit vector
+        unit_vp = (-1*unit_v[1], unit_v[0])
+        # Set the arrow head size relative to the grid size
+        grid_size = min(abs(self.grid.size[0]), abs(self.grid.size[1]))
+        a = grid_size*2/3 # a: arrow head triangle height is 2/3 the length of a grid box
+        b = grid_size*1/3 # a: arrow head triangle base is 1/3 the length of a grid box
+        # Define a vector that is the arrow head from base to tip
+        arrow_head_v = (a*unit_v[0], a*unit_v[1])
+        # Fine the pixel coordinate of the base of the arrow head triangle
+        base = (l.end[0] - arrow_head_v[0], l.end[1] - arrow_head_v[1])
+        # Describe the arrow head as a list of three points
+        arrow_head_points = [ l.end,
+                              (base[0] - b*unit_vp[0], base[1] - b*unit_vp[1]),
+                              (base[0] + b*unit_vp[0], base[1] + b*unit_vp[1])
+                             ]
+        # Draw the arrow head
+        pygame.draw.polygon(surf, color, arrow_head_points)
+        # Draw the arrow shaft
+        width = max(1, int(grid_size/4)) # Scale line width to grid size
+        # Extend the arrow shaft into the harrow head to avoid gaps between pygame line and arrow head 
+        base = (l.end[0] - arrow_head_v[0]/2, l.end[1] - arrow_head_v[1]/2)
+        pygame.draw.line(surf, color, l.start, base, width)
+
+
+
+    @property
+    def color_debug_hud(self) -> Color:
+        if self.settings['setting_dark_mode']:
+            return self.colors['color_debug_hud_dark']
+        else:
+            return self.colors['color_debug_hud_light']
+
+    @property
+    def color_graph_paper_bgnd(self) -> Color:
+        if self.settings['setting_dark_mode']:
+            return self.colors['color_graph_paper_bgnd_dark']
+        else:
+            return self.colors['color_graph_paper_bgnd_light']
+
+    @property
+    def color_graph_paper_lines(self) -> Color:
+        if self.settings['setting_dark_mode']:
+            return self.colors['color_graph_paper_lines_dark']
+        else:
+            return self.colors['color_graph_paper_lines_light']
+
+    @property
+    def color_mouse_dot(self) -> Color:
+        if self.settings['setting_dark_mode']:
+            return self.colors['color_mouse_dot_dark']
+        else:
+            return self.colors['color_mouse_dot_light']
+
+    @property
+    def color_mouse_vector(self) -> Color:
+        if self.settings['setting_dark_mode']:
+            return self.colors['color_mouse_vector_dark']
+        else:
+            return self.colors['color_mouse_vector_light']
+
 
 if __name__ == '__main__':
     print(f"Run {Path(__file__).name}")
