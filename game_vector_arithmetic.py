@@ -21,6 +21,7 @@
 [x] Click to draw a vector
     * [x] Click to start a line segment
     * [x] Draw an arrow-head
+    * [x] Show the x-y components
 """
 
 import math
@@ -40,6 +41,24 @@ def shutdown() -> None:
     # Clean up GUI
     pygame.font.quit()                                  # Uninitialize the font module
     pygame.quit()                                       # Uninitialize all pygame modules
+
+def signum(num) -> int:
+    """Return sign of num as +1, -1, or 0.
+
+    >>> signum(5)
+    1
+    >>> signum(-5)
+    -1
+    >>> signum(0)
+    0
+    >>> signum(0.1)
+    1
+    >>> signum(-0.1)
+    -1
+    """
+    if num > 0: return 1
+    elif num < 0: return -1
+    else: return 0
 
 class Text:
     def __init__(self, pos:tuple, font_size:int, sys_font:str):
@@ -223,12 +242,12 @@ def define_colors() -> dict:
     colors['color_graph_paper_bgnd_light'] = Color(180,200,255,255)
     colors['color_graph_paper_lines_dark'] = Color(100,100,255,50)
     colors['color_graph_paper_lines_light'] = Color(100,100,255,50)
-    colors['color_green_dark'] = Color(200,255,220)
-    colors['color_brown_light'] = Color(50,30,0)
+    colors['color_pop_dark'] = Color(200,255,220)
+    colors['color_pop_light'] = Color(50,30,0)
     colors['color_mouse_dot_dark'] = Color(200,50,50)
     colors['color_mouse_dot_light'] = Color(200,50,50)
-    colors['color_mouse_vector_dark'] = Color(255,255,0)
-    colors['color_mouse_vector_light'] = Color(50,30,0,120)
+    colors['color_mouse_vector_dark'] = Color(180,180,0)
+    colors['color_mouse_vector_light'] = Color(50,30,0)
     return colors
 
 @dataclass
@@ -253,6 +272,12 @@ class LineSeg:
             !None | !None| False
         """
         return (self.start != None) and (self.end == None)
+
+    @property
+    def midpoint(self) -> tuple:
+        if not self.start: return (None, None)
+        if not self.end: return (None, None)
+        return (self.start[0] + self.vector[0]*0.5, self.start[1] + self.vector[1]*0.5)
 
 class Grid:
     """Define a grid of lines.
@@ -535,6 +560,7 @@ class Game:
                 logger.debug(f"Debug: {self.settings['setting_debug']}")
             case pygame.K_d: self.toggle_dark_mode()
             case pygame.K_r: self.grid.reset()
+            case pygame.K_ESCAPE: self.line_seg = LineSeg(None,None)
 
             case _:
                 logger.debug(f"{event.unicode}")
@@ -578,27 +604,38 @@ class Game:
     def draw_mouse_as_snapped_dot(self, surf:pygame.Surface) -> None:
         # mpos = pygame.mouse.get_pos()
         grid_size = min(abs(self.grid.size[0]), abs(self.grid.size[1]))
-        radius = grid_size/3
-        snapped = self.snap_to_grid(pygame.mouse.get_pos())
+        if self.line_seg.is_started:
+            # Keep dot at start of line
+            snapped = self.grid.xfm_gp(self.line_seg.start)
+            color = self.color_mouse_vector
+            radius = grid_size/4
+        else:
+            # Move dot with mouse
+            snapped = self.snap_to_grid(pygame.mouse.get_pos())
+            color = self.color_mouse_dot
+            radius = grid_size/3
         ### circle(surface, color, center, radius) -> Rect
-        pygame.draw.circle(surf, self.color_mouse_dot, snapped, radius)
+        pygame.draw.circle(surf, color, snapped, radius)
 
     def draw_mouse_vector(self, surf:pygame.Surface) -> None:
-        color = self.color_mouse_vector
         if self.line_seg.is_started:
             ### Draw a vector from self.line_seg.start to the grid-snapped mouse position
-            # Get the grid-snapped line segment in pixel coordinates
-            tail = self.grid.xfm_gp(self.line_seg.start)
-            head = self.snap_to_grid(pygame.mouse.get_pos())
+            # # Get the grid-snapped line segment in pixel coordinates
+            # tail = self.grid.xfm_gp(self.line_seg.start)
+            # head = self.snap_to_grid(pygame.mouse.get_pos())
+            tail = self.line_seg.start
+            head = self.grid.xfm_pg(self.snap_to_grid(pygame.mouse.get_pos()))
             l = LineSeg(start=tail, end=head)
             # Draw line segment as a vector (a line with an arrow head)
-            self.draw_line_as_vector(surf, l, color)
+            self.draw_line_as_vector(surf, l, self.color_mouse_vector)
+            # Draw x and y components
+            self.draw_xy_components(surf, l, self.color_pop)
 
     def draw_line_as_vector(self, surf:pygame.Surface, l:LineSeg, color:Color) -> None:
         """Draw line segment as a vector: a line with an arrow head.
 
         surf -- draw on this pygame.Surface
-        l -- LineSeg(start=tail, end=head)
+        l -- LineSeg(start=tail, end=head) in game coordinates
         color -- pygame.Color(R,G,B)
 
         Draw an arrow head:
@@ -607,6 +644,8 @@ class Game:
         Draw an arrow shaft:
           A thick line from the vector tail to the base of the arrow head.
         """
+        # Convert to pixel coordinates
+        l = LineSeg(self.grid.xfm_gp(l.start), self.grid.xfm_gp(l.end))
         # Get the vector from the line segment
         v = l.vector
         # Get the unit vector
@@ -634,12 +673,77 @@ class Game:
         # Draw the arrow head
         pygame.draw.polygon(surf, color, arrow_head_points)
         # Draw the arrow shaft
-        width = max(1, int(grid_size/4)) # Scale line width to grid size
+        width = max(1, int(grid_size/6)) # Scale line width to grid size
         # Extend the arrow shaft into the harrow head to avoid gaps between pygame line and arrow head 
         base = (l.end[0] - arrow_head_v[0]/2, l.end[1] - arrow_head_v[1]/2)
         pygame.draw.line(surf, color, l.start, base, width)
 
+    def draw_xy_components(self, surf:pygame.Surface, l:LineSeg, color:Color) -> None:
+        """Draw x and y components of the line segment.
 
+        surf:pygame.Surface -- Surface to draw on
+        l:LineSeg -- Line segment in game coordinates
+        color:Color -- Color of lines and text
+        """
+        start = self.grid.xfm_gp(l.start)
+        end = self.grid.xfm_gp(l.end)
+
+        # Draw x,y lines
+        xline = LineSeg(start, (end[0], start[1]))
+        yline = LineSeg((end[0], start[1]), end)
+
+        pygame.draw.line(surf, color, xline.start, xline.end)
+        pygame.draw.line(surf, color, yline.start, yline.end)
+
+        # Draw ticks on x,y lines
+        grid_size = min(abs(self.grid.size[0]), abs(self.grid.size[1]))
+        tick_len = grid_size/6
+        if l.vector[1] == 0:
+            # Draw one more tick if the vector is horizontal
+            xstop = abs(l.vector[0])+1
+        else:
+            xstop = abs(l.vector[0])
+        for i in range(1, xstop):
+            x = l.start[0] + signum(l.vector[0])*i
+            y = l.start[1]
+            tick_p = self.grid.xfm_gp((x,y))
+            tick = LineSeg((tick_p[0], tick_p[1]-tick_len),
+                           (tick_p[0], tick_p[1]+tick_len))
+            pygame.draw.line(surf, color, tick.start, tick.end, width=max(1,int(grid_size/20)))
+        for i in range(1, abs(l.vector[1])):
+            x = l.end[0]
+            y = l.end[1] - signum(l.vector[1])*i
+            tick_p = self.grid.xfm_gp((x,y))
+            tick = LineSeg((tick_p[0]-tick_len, tick_p[1]),
+                           (tick_p[0]+tick_len, tick_p[1]))
+            pygame.draw.line(surf, color, tick.start, tick.end, width=max(1,int(grid_size/20)))
+
+        if l.vector[0] != 0:
+            # Label x component
+            xlabel = Text((0,0), font_size=max(15,int(grid_size)), sys_font="Roboto Mono")
+            xlabel.update(f"{l.vector[0]}")
+            xlabel_w = xlabel.font.size(xlabel.text_lines[0])[0]
+            xlabel_h = xlabel.font.get_linesize()*len(xlabel.text_lines)
+            if l.vector[1] < 0:
+                # If y-component is NEGATIVE, align center BOTTOM of label to midpoint of the x-component
+                xlabel.pos = (xline.midpoint[0] - xlabel_w/2, xline.midpoint[1] - xlabel_h)
+            else:
+                # If y-component is POSITIVE, align center TOP of label to midpoint of the x-component
+                xlabel.pos = (xline.midpoint[0] - xlabel_w/2, xline.midpoint[1])
+            xlabel.render(surf, color)
+        if l.vector[1] != 0:
+            # Label y component
+            ylabel = Text((0,0), font_size=max(15,int(grid_size)), sys_font="Roboto Mono")
+            ylabel.update(f"{l.vector[1]}")
+            ylabel_w = ylabel.font.size(ylabel.text_lines[0])[0]
+            ylabel_h = ylabel.font.get_linesize()*len(ylabel.text_lines)
+            if l.vector[0] < 0:
+                # If x-component is NEGATIVE, align center LEFT of label to midpoint of the y-component
+                ylabel.pos = (yline.midpoint[0] - ylabel_w - ylabel.font.size("0")[0]/2, yline.midpoint[1] - ylabel_h/2)
+            else:
+                # If x-component is POSITIVE, align center RIGHT of label to midpoint of the y-component
+                ylabel.pos = (yline.midpoint[0] + ylabel.font.size("0")[0]/2, yline.midpoint[1] - ylabel_h/2)
+            ylabel.render(surf, color)
 
     @property
     def color_debug_hud(self) -> Color:
@@ -661,6 +765,13 @@ class Game:
             return self.colors['color_graph_paper_lines_dark']
         else:
             return self.colors['color_graph_paper_lines_light']
+
+    @property
+    def color_pop(self) -> Color:
+        if self.settings['setting_dark_mode']:
+            return self.colors['color_pop_dark']
+        else:
+            return self.colors['color_pop_light']
 
     @property
     def color_mouse_dot(self) -> Color:
