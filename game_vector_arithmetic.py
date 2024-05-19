@@ -17,6 +17,8 @@
 [x] Center grid on screen
     * 'r' resets the xfm matrix and recenters the grid
 [x] Re-center grid when toggling between fullscreen and windowed
+[x] Draw mouse dot snapped to grid
+[ ] Click to draw a vector
 """
 
 from pathlib import Path
@@ -220,24 +222,27 @@ def define_colors() -> dict:
     colors['color_graph_paper_lines_light'] = Color(100,100,255,50)
     colors['color_green_dark'] = Color(200,255,220)
     colors['color_brown_light'] = Color(50,30,0)
+    colors['color_mouse_dot_dark'] = Color(200,50,50)
+    colors['color_mouse_dot_light'] = Color(200,50,50)
     return colors
 
 class Game:
     def __init__(self):
         pygame.init()                                   # Init pygame -- quit in shutdown
         pygame.font.init()                              # Initialize the font module
+        pygame.mouse.set_visible(False)                 # Hide the OS mouse icon
+        pygame.display.set_caption("Vector arithmetic")
 
         os.environ["PYGAME_BLEND_ALPHA_SDL2"] = "1"     # Use SDL2 alpha blending
         # os.environ["SDL_VIDEO_WINDOW_POS"] = "1000,0"   # Position window in upper right
 
         self.os_window = OsWindow((60*16, 60*9), is_fullscreen=False) # Track OS Window size and flags
         self.surfs = define_surfaces(self.os_window)    # Dict of Pygame Surfaces (including pygame.display)
-        pygame.display.set_caption("Vector arithmetic")
         self.settings = define_settings()               # Dict of game settings
         self.colors = define_colors()                   # Dict of pygame Colors
 
         # Game Data
-        self.grid = Grid(self, N=50)
+        self.grid = Grid(self, N=40)
 
         # FPS
         self.clock = pygame.time.Clock()
@@ -262,6 +267,8 @@ class Game:
         # Game art
         self.surfs['surf_game_art'].fill(self.color_graph_paper_bgnd)
         self.grid.draw(self.surfs['surf_game_art'])
+        self.draw_mouse_as_snapped_dot(self.surfs['surf_game_art'])
+
 
         # Copy game art to OS window
         ### pygame.Surface.blit(source, dest, area=None, special_flags=0) -> Rect
@@ -344,6 +351,17 @@ class Game:
     def toggle_dark_mode(self) -> None:
         self.settings['setting_dark_mode'] = not self.settings['setting_dark_mode']
 
+    def draw_mouse_as_snapped_dot(self, surf:pygame.Surface) -> None:
+        mpos = pygame.mouse.get_pos()
+        grid_size = min(abs(self.grid.size[0]), abs(self.grid.size[1]))
+        radius = grid_size/3
+        # Xfm mouse position from pixel to grid with precision=0 to snap to grid
+        mpos_snapped_g = self.grid.xfm_pg(mpos, p=0)
+        # Xfm back to pixels to get "snapped" pixel coordinates
+        mpos_snapped_p = self.grid.xfm_gp(mpos_snapped_g)
+        ### circle(surface, color, center, radius) -> Rect
+        pygame.draw.circle(surf, self.color_mouse_dot, mpos_snapped_p, radius)
+
     @property
     def color_debug_hud(self) -> Color:
         if self.settings['setting_dark_mode']:
@@ -364,6 +382,13 @@ class Game:
             return self.colors['color_graph_paper_lines_dark']
         else:
             return self.colors['color_graph_paper_lines_light']
+
+    @property
+    def color_mouse_dot(self) -> Color:
+        if self.settings['setting_dark_mode']:
+            return self.colors['color_mouse_dot_dark']
+        else:
+            return self.colors['color_mouse_dot_light']
 
 @dataclass
 class LineSeg:
@@ -422,7 +447,6 @@ class Grid:
 
         scale_x = self.game.os_window.size[0]/size_p[0]
         scale_y = self.game.os_window.size[1]/size_p[1]
-        logger.debug(f"scale: {scale_x}, {scale_y}")
 
         return min(scale_x, scale_y)
 
@@ -512,6 +536,18 @@ class Grid:
                     blend=1                             # 0 or 1
                     )
 
+    @property
+    def size(self) -> tuple:
+        """Return grid size in pixels."""
+        size_g = (1,1) # Size of one grid box in grid coordinates
+
+        # Get the 2x2 transformation matrix
+        a,b,c,d = self.scaled()
+
+        # Transform the size to pixel coordinates (as if the size were a point)
+        size_p = (a*size_g[0] + b*size_g[1], c*size_g[0] + d*size_g[1])
+
+        return size_p
 
 if __name__ == '__main__':
     print(f"Run {Path(__file__).name}")
