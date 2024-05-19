@@ -22,6 +22,7 @@
     * [x] Click to start a line segment
     * [x] Draw an arrow-head
     * [x] Show the x-y components
+[x] Pan with mouse middle button
 """
 
 import math
@@ -309,6 +310,9 @@ class Grid:
                int(self.game.os_window.size[1]/2))
         self.e = ctr[0]
         self.f = ctr[1]
+        self.pan_origin = (self.e, self.f) # Stores initial (e,f) during panning
+        self.pan_ref = (None, None) # Stores initial mpos during panning
+        self.is_panning = False # Tracks whether mouse is panning
 
         self.scale = self.zoom_to_fit()
 
@@ -378,6 +382,10 @@ class Grid:
 
     def zoom_out(self) -> None:
         self.scale *= 0.9
+
+    def pan(self, mpos:tuple) -> None:
+        self.e = self.pan_origin[0] + (mpos[0] - self.pan_ref[0])
+        self.f = self.pan_origin[1] + (mpos[1] - self.pan_ref[1])
 
     @property
     def hlinesegs(self) -> list:
@@ -467,9 +475,13 @@ class Game:
             mpos_p = pygame.mouse.get_pos()             # Mouse in pixel coord sys
             mpos_g = self.grid.xfm_pg(mpos_p)           # Mouse in game coord sys
             self.debug_hud.add_text(f"Mouse (game): {mpos_g}")
+            self.debug_hud.add_text(f"pan_ref: {self.grid.pan_ref}")
+            self.debug_hud.add_text(f"e,f: ({self.grid.e}),({self.grid.f})")
 
         # UI
         self.handle_ui_events()
+        if self.grid.is_panning:
+            self.grid.pan(pygame.mouse.get_pos())
 
         # Game art
         self.surfs['surf_game_art'].fill(self.color_graph_paper_bgnd)
@@ -513,7 +525,6 @@ class Game:
                 case pygame.WINDOWTAKEFOCUS: pass
                 case pygame.TEXTINPUT: pass
                 case pygame.KEYUP: pass
-                case pygame.MOUSEBUTTONUP: pass
                 # Handle these events
                 case pygame.QUIT: sys.exit()
                 case pygame.WINDOWRESIZED:
@@ -534,12 +545,20 @@ class Game:
                         case 1:
                             logger.debug("Left-click")
                             self.handle_mousebuttondown_leftclick()
-                        case 2: logger.debug("Middle-click")
+                        case 2:
+                            logger.debug("Middle-click")
+                            self.handle_mousebuttondown_middleclick()
                         case 3: logger.debug("Right-click")
                         case 4: logger.debug("Mousewheel y=+1")
                         case 5: logger.debug("Mousewheel y=-1")
                         case 6: logger.debug("Logitech G602 Thumb button 6")
                         case 7: logger.debug("Logitech G602 Thumb button 7")
+                        case _: logger.debug(event)
+                case pygame.MOUSEBUTTONUP:
+                    match event.button:
+                        case 2:
+                            logger.debug("Middle mouse button released")
+                            self.handle_mousebuttonup_middleclick()
                         case _: logger.debug(event)
                 # Log any other events
                 case _:
@@ -578,7 +597,16 @@ class Game:
 
             # Record this point as the new start.
             self.line_seg.start = mpos_g
-            
+
+    def handle_mousebuttondown_middleclick(self) -> None:
+        self.grid.pan_ref = pygame.mouse.get_pos()
+        self.grid.is_panning = True
+
+    def handle_mousebuttonup_middleclick(self) -> None:
+        self.grid.pan_ref = (None,None)
+        self.grid.pan_origin = (self.grid.e, self.grid.f)
+        self.grid.is_panning = False
+
 
     def update_surfaces(self) -> None:
         """Call this after os_window handles WINDOWRESIZED event. See 'define_surfaces()'"""
