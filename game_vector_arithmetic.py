@@ -24,8 +24,10 @@
     * [x] Show the x-y components
 [x] Pan with mouse middle button
 [x] F10 to toggle ORTHOLOCK
-[ ] Left click to finish a line -- do not start a new line yet
-    * [ ] Draw finished lines as vectors
+[x] Left click to finish a line -- do not start a new line yet
+    * [x] Draw finished lines as vectors
+[x] 'u' and 'r' to undo/redo line art history
+    * Change key binding for view 'reset' to 'R'
 """
 
 import math
@@ -128,9 +130,9 @@ class OsWindow:
     Example
     -------
 
-    >>> os_window = OsWindow(60*16, 60*9)
-    >>> os_window.toggle_fullscreen()
-    >>> os_window.handle_WINDOWRESIZED()
+    # >>> os_window = OsWindow(60*16, 60*9)
+    # >>> os_window.toggle_fullscreen()
+    # >>> os_window.handle_WINDOWRESIZED()
 
     After toggling full screen, user must do this:
 
@@ -442,6 +444,105 @@ class Grid:
 
         return size_p
 
+@dataclass
+class Physics:
+    line_seg:LineSeg = LineSeg(None, None)
+    force_vector:tuple = (None, None)
+
+class GameHistory:
+    """All the line segments drawn and force vectors applied so far.
+
+    head:int -- a "play head" that points at a specific iteration in the game history
+    size:int -- length of all lists in the history (all lists are always the same size)
+    line_segs:list -- all line segments in the game history
+    force_vectors:list -- all force vectors in the game history
+    undo() -- move "head" backward in game history
+    redo() -- move "head" forward in game history
+
+    Start an empty Game History
+    >>> gameHistory = GameHistory()
+    >>> print(gameHistory.head)
+    None
+
+    Record three iterations of history
+    >>> physics = Physics(LineSeg((1,2),(3,5)))
+    >>> gameHistory.record(physics)
+    >>> print(gameHistory.head)
+    0
+    >>> physics.line_seg = LineSeg((-1,-2),(3,5))
+    >>> gameHistory.record(physics)
+    >>> gameHistory.line_segs
+    [LineSeg(start=(1, 2), end=(3, 5)), LineSeg(start=(-1, -2), end=(3, 5))]
+    >>> print(gameHistory.head)
+    1
+    >>> gameHistory.record(physics)
+    >>> print(gameHistory.head)
+    2
+
+    Undo all three, redo all three
+    >>> gameHistory.undo()
+    >>> print(gameHistory.head)
+    1
+    >>> gameHistory.undo()
+    >>> print(gameHistory.head)
+    0
+    >>> gameHistory.undo()
+    >>> print(gameHistory.head)
+    None
+    >>> gameHistory.redo()
+    >>> print(gameHistory.head)
+    0
+    >>> gameHistory.redo()
+    >>> print(gameHistory.head)
+    1
+    >>> gameHistory.redo()
+    >>> print(gameHistory.head)
+    2
+
+    Redo again (play-head already at end) and play-head does not move.
+    >>> gameHistory.redo()
+    >>> print(gameHistory.head)
+    2
+    """
+    def __init__(self):
+        self.line_segs = []                         # Initialize: empty list of line segments
+        self.force_vectors = []                         # Initialize: empty list of force vectors
+        self.head = None                                # Initialize: head points at nothing
+        self.size = 0                                   # Initialize: history size is 0
+
+    def record(self, physics:Physics) -> None:
+        if (self.head == None):
+            # Prune the future before appending
+            self.size = 0
+            self.line_segs = []
+            self.force_vectors = []
+        elif (self.head < self.size-1):
+            # Prune the future before appending
+            self.size = self.head+1
+            self.line_segs = self.line_segs[0:self.size]
+            self.force_vectors = self.force_vectors[0:self.size]
+        # Normal append
+        self.line_segs.append(physics.line_seg)     # Add this line segment to the history
+        self.force_vectors.append(physics.force_vector) # Add this force vector to the history
+        self.size += 1                                  # History size increases by 1
+        self.move_head_forward()
+
+    def move_head_forward(self) -> None:
+        if self.head == None:
+            self.head = 0                               # Point head at first element
+        else:
+            self.head = min(self.size-1, self.head+1)   # Point head at next element
+
+    def undo(self) -> None:
+        match self.head:
+            case None: pass
+            case 0:
+                self.head = None
+            case _: self.head -= 1
+
+    def redo(self) -> None:
+        self.move_head_forward()
+
 class Game:
     def __init__(self):
         pygame.init()                                   # Init pygame -- quit in shutdown
@@ -459,9 +560,8 @@ class Game:
 
         # Game Data
         self.grid = Grid(self, N=40)
-        self.line_seg = LineSeg(start=None, end=None)
-        # self.force_vector = (0,0)
-        # self.game_history = GameHistory()
+        self.game_history = GameHistory()
+        self.physics = Physics()
 
         # FPS
         self.clock = pygame.time.Clock()
@@ -474,12 +574,7 @@ class Game:
         if self.settings['setting_debug']: self.debug_hud = DebugHud(self)
         else: self.debug_hud = None
 
-        # Track mouse position in game coordinates
-        if self.debug_hud:
-            mpos_p = pygame.mouse.get_pos()             # Mouse in pixel coord sys
-            mpos_g = self.grid.xfm_pg(mpos_p)           # Mouse in game coord sys
-            self.debug_hud.add_text(f"Mouse (game): {mpos_g}")
-            if self.settings['setting_lock_ortho']: self.debug_hud.add_text("Ortholock on")
+        if self.debug_hud: self.add_debug_text()
 
         # UI
         self.handle_ui_events()
@@ -491,7 +586,7 @@ class Game:
         self.grid.draw(self.surfs['surf_game_art'])
         self.draw_mouse_as_snapped_dot(self.surfs['surf_game_art'])
         self.draw_mouse_vector(self.surfs['surf_game_art'])
-
+        self.draw_game_history(self.surfs['surf_game_art'])
 
         # Copy game art to OS window
         ### pygame.Surface.blit(source, dest, area=None, special_flags=0) -> Rect
@@ -506,6 +601,18 @@ class Game:
 
         ### clock.tick(framerate=0) -> milliseconds
         self.clock.tick(60)
+
+    def add_debug_text(self) -> None:
+        # Track mouse position in game coordinates
+        mpos_p = pygame.mouse.get_pos()             # Mouse in pixel coord sys
+        mpos_g = self.grid.xfm_pg(mpos_p)           # Mouse in game coord sys
+        self.debug_hud.add_text(f"Mouse (game): {mpos_g}")
+        # Display ORTHO on/off
+        if self.settings['setting_lock_ortho']: self.debug_hud.add_text("Ortholock on")
+        # Display game history
+        vectors_str_list = ["Vector: " + str(l.vector) for l in self.game_history.line_segs]
+        vectors_str = "\n".join(vectors_str_list)
+        self.debug_hud.add_text(f"{vectors_str}")
 
     def handle_ui_events(self) -> None:
         for event in pygame.event.get():
@@ -581,26 +688,27 @@ class Game:
                 self.settings['setting_debug'] = not self.settings['setting_debug']
                 logger.debug(f"Debug: {self.settings['setting_debug']}")
             case pygame.K_d: self.toggle_dark_mode()
-            case pygame.K_r: self.grid.reset()
-            case pygame.K_ESCAPE: self.line_seg = LineSeg(None,None)
+            case pygame.K_r:
+                if kmod & pygame.KMOD_SHIFT:
+                    self.grid.reset()
+                else:
+                    self.game_history.redo()
+            case pygame.K_ESCAPE: self.physics.line_seg = LineSeg(None,None)
             case pygame.K_F10: self.toggle_lock_ortho()
-
+            case pygame.K_u: self.game_history.undo()
             case _:
                 logger.debug(f"{event.unicode}")
 
     def handle_mousebuttondown_leftclick(self) -> None:
         mpos_g = self.grid.xfm_pg(pygame.mouse.get_pos())
-        if not self.line_seg.is_started:
-            self.line_seg.start = mpos_g
+        if not self.physics.line_seg.is_started:
+            self.physics.line_seg.start = mpos_g
         else:
-            self.line_seg.end = mpos_g
-            # TODO: store line segment.
-
+            self.physics.line_seg.end = mpos_g
+            # Store line segment.
+            self.game_history.record(self.physics)
             # Reset active line segment to (start=None, end=None).
-            self.line_seg = LineSeg(start=None, end=None)
-
-            # Record this point as the new start.
-            self.line_seg.start = mpos_g
+            self.physics.line_seg = LineSeg(start=None, end=None)
 
     def handle_mousebuttondown_middleclick(self) -> None:
         self.grid.pan_ref = pygame.mouse.get_pos()
@@ -638,9 +746,9 @@ class Game:
 
     def draw_mouse_as_snapped_dot(self, surf:pygame.Surface) -> None:
         grid_size = min(abs(self.grid.size[0]), abs(self.grid.size[1]))
-        if self.line_seg.is_started:
+        if self.physics.line_seg.is_started:
             # Keep dot at start of line
-            snapped = self.grid.xfm_gp(self.line_seg.start)
+            snapped = self.grid.xfm_gp(self.physics.line_seg.start)
             color = self.color_mouse_vector
             radius = grid_size/4
         else:
@@ -652,12 +760,12 @@ class Game:
         pygame.draw.circle(surf, color, snapped, radius)
 
     def draw_mouse_vector(self, surf:pygame.Surface) -> None:
-        if self.line_seg.is_started:
-            ### Draw a vector from self.line_seg.start to the grid-snapped mouse position
+        if self.physics.line_seg.is_started:
+            ### Draw a vector from self.physics.line_seg.start to the grid-snapped mouse position
             # # Get the grid-snapped line segment in pixel coordinates
-            # tail = self.grid.xfm_gp(self.line_seg.start)
+            # tail = self.grid.xfm_gp(self.physics.line_seg.start)
             # head = self.snap_to_grid(pygame.mouse.get_pos())
-            tail = self.line_seg.start
+            tail = self.physics.line_seg.start
             head = self.grid.xfm_pg(self.snap_to_grid(pygame.mouse.get_pos()))
             if self.settings['setting_lock_ortho']:
                 if abs(tail[0] - head[0]) > abs(tail[1] - head[1]):
@@ -671,6 +779,14 @@ class Game:
             self.draw_line_as_vector(surf, l, self.color_mouse_vector)
             # Draw x and y components
             self.draw_xy_components(surf, l, self.color_pop)
+
+    def draw_game_history(self, surf:pygame.Surface) -> None:
+        """Draw all line segments and forces in the game history as vectors."""
+        if self.game_history.head == None: return
+        color = self.color_mouse_vector
+        for i in range(self.game_history.head+1):
+            self.draw_line_as_vector(surf, self.game_history.line_segs[i], color)
+
 
     def draw_line_as_vector(self, surf:pygame.Surface, l:LineSeg, color:Color) -> None:
         """Draw line segment as a vector: a line with an arrow head.
