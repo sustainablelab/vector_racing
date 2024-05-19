@@ -23,6 +23,9 @@
     * [x] Draw an arrow-head
     * [x] Show the x-y components
 [x] Pan with mouse middle button
+[x] F10 to toggle ORTHOLOCK
+[ ] Left click to finish a line -- do not start a new line yet
+    * [ ] Draw finished lines as vectors
 """
 
 import math
@@ -206,6 +209,7 @@ def define_settings() -> dict:
     settings = {}
     settings['setting_debug'] = True
     settings['setting_dark_mode'] = True
+    settings['setting_lock_ortho'] = False
     return settings
 
 def define_surfaces(os_window:OsWindow) -> dict:
@@ -442,7 +446,7 @@ class Game:
     def __init__(self):
         pygame.init()                                   # Init pygame -- quit in shutdown
         pygame.font.init()                              # Initialize the font module
-        pygame.mouse.set_visible(False)                 # Hide the OS mouse icon
+        # pygame.mouse.set_visible(False)                 # Hide the OS mouse icon
         pygame.display.set_caption("Vector arithmetic")
 
         os.environ["PYGAME_BLEND_ALPHA_SDL2"] = "1"     # Use SDL2 alpha blending
@@ -475,8 +479,7 @@ class Game:
             mpos_p = pygame.mouse.get_pos()             # Mouse in pixel coord sys
             mpos_g = self.grid.xfm_pg(mpos_p)           # Mouse in game coord sys
             self.debug_hud.add_text(f"Mouse (game): {mpos_g}")
-            self.debug_hud.add_text(f"pan_ref: {self.grid.pan_ref}")
-            self.debug_hud.add_text(f"e,f: ({self.grid.e}),({self.grid.f})")
+            if self.settings['setting_lock_ortho']: self.debug_hud.add_text("Ortholock on")
 
         # UI
         self.handle_ui_events()
@@ -580,6 +583,7 @@ class Game:
             case pygame.K_d: self.toggle_dark_mode()
             case pygame.K_r: self.grid.reset()
             case pygame.K_ESCAPE: self.line_seg = LineSeg(None,None)
+            case pygame.K_F10: self.toggle_lock_ortho()
 
             case _:
                 logger.debug(f"{event.unicode}")
@@ -616,6 +620,9 @@ class Game:
     def toggle_dark_mode(self) -> None:
         self.settings['setting_dark_mode'] = not self.settings['setting_dark_mode']
 
+    def toggle_lock_ortho(self) -> None:
+        self.settings['setting_lock_ortho'] = not self.settings['setting_lock_ortho']
+
     def snap_to_grid(self, point:tuple) -> tuple:
         """Snap a point in pixel coordinates to the grid.
 
@@ -630,7 +637,6 @@ class Game:
         return snapped_p
 
     def draw_mouse_as_snapped_dot(self, surf:pygame.Surface) -> None:
-        # mpos = pygame.mouse.get_pos()
         grid_size = min(abs(self.grid.size[0]), abs(self.grid.size[1]))
         if self.line_seg.is_started:
             # Keep dot at start of line
@@ -653,6 +659,13 @@ class Game:
             # head = self.snap_to_grid(pygame.mouse.get_pos())
             tail = self.line_seg.start
             head = self.grid.xfm_pg(self.snap_to_grid(pygame.mouse.get_pos()))
+            if self.settings['setting_lock_ortho']:
+                if abs(tail[0] - head[0]) > abs(tail[1] - head[1]):
+                    # x-component > y-component, so lock line to x (set end.y = start.y)
+                    head = (head[0], tail[1])
+                else:
+                    # y-component >= x-component, so lock line to y (set end.x = start.x)
+                    head = (tail[0], head[1])
             l = LineSeg(start=tail, end=head)
             # Draw line segment as a vector (a line with an arrow head)
             self.draw_line_as_vector(surf, l, self.color_mouse_vector)
