@@ -28,6 +28,12 @@
     * [x] Draw finished lines as vectors
 [x] 'u' and 'r' to undo/redo line art history
     * Change key binding for view 'reset' to 'R'
+[x] Set color with number keys
+    * [x] Indicate draw color by changing the color of the mouse dot
+    * [x] Save color in the game_history
+    * [ ] Force vectors will always be the same color, but line segments (also
+          drawn as vectors) will be whatever color I chose
+[ ] Draw force vectors
 """
 
 import math
@@ -255,6 +261,12 @@ def define_colors() -> dict:
     colors['color_mouse_dot_light'] = Color(200,50,50)
     colors['color_mouse_vector_dark'] = Color(180,180,0)
     colors['color_mouse_vector_light'] = Color(50,30,0)
+    colors['color_1_dark'] = Color(150,200,0)
+    colors['color_2_dark'] = Color(200,0,0)
+    colors['color_3_dark'] = Color(0,200,200)
+    colors['color_1_light'] = Color(200,200,0)
+    colors['color_2_light'] = Color(200,0,0)
+    colors['color_3_light'] = Color(0,200,200)
     return colors
 
 @dataclass
@@ -447,6 +459,7 @@ class Grid:
 @dataclass
 class Physics:
     line_seg:LineSeg = LineSeg(None, None)
+    line_color:Color = Color(0,0,0)
     force_vector:tuple = (None, None)
 
 class GameHistory:
@@ -455,6 +468,7 @@ class GameHistory:
     head:int -- a "play head" that points at a specific iteration in the game history
     size:int -- length of all lists in the history (all lists are always the same size)
     line_segs:list -- all line segments in the game history
+    colors:list -- color of each line segment in the game history
     force_vectors:list -- all force vectors in the game history
     undo() -- move "head" backward in game history
     redo() -- move "head" forward in game history
@@ -505,7 +519,8 @@ class GameHistory:
     2
     """
     def __init__(self):
-        self.line_segs = []                         # Initialize: empty list of line segments
+        self.line_segs = []                             # Initialize: empty list of line segments
+        self.line_colors = []                           # Initialize: empty list of line colors
         self.force_vectors = []                         # Initialize: empty list of force vectors
         self.head = None                                # Initialize: head points at nothing
         self.size = 0                                   # Initialize: history size is 0
@@ -515,14 +530,17 @@ class GameHistory:
             # Prune the future before appending
             self.size = 0
             self.line_segs = []
+            self.line_colors = []
             self.force_vectors = []
         elif (self.head < self.size-1):
             # Prune the future before appending
             self.size = self.head+1
             self.line_segs = self.line_segs[0:self.size]
+            self.line_colors = self.line_colors[0:self.size]
             self.force_vectors = self.force_vectors[0:self.size]
         # Normal append
-        self.line_segs.append(physics.line_seg)     # Add this line segment to the history
+        self.line_segs.append(physics.line_seg)         # Add this line segment to the history
+        self.line_colors.append(physics.line_color)     # Add this line color to the history
         self.force_vectors.append(physics.force_vector) # Add this force vector to the history
         self.size += 1                                  # History size increases by 1
         self.move_head_forward()
@@ -562,6 +580,7 @@ class Game:
         self.grid = Grid(self, N=40)
         self.game_history = GameHistory()
         self.physics = Physics()
+        self.physics.line_color = self.color_1
 
         # FPS
         self.clock = pygame.time.Clock()
@@ -696,6 +715,9 @@ class Game:
             case pygame.K_ESCAPE: self.physics.line_seg = LineSeg(None,None)
             case pygame.K_F10: self.toggle_lock_ortho()
             case pygame.K_u: self.game_history.undo()
+            case pygame.K_1: self.physics.line_color = self.color_1
+            case pygame.K_2: self.physics.line_color = self.color_2
+            case pygame.K_3: self.physics.line_color = self.color_3
             case _:
                 logger.debug(f"{event.unicode}")
 
@@ -746,15 +768,14 @@ class Game:
 
     def draw_mouse_as_snapped_dot(self, surf:pygame.Surface) -> None:
         grid_size = min(abs(self.grid.size[0]), abs(self.grid.size[1]))
+        color = self.physics.line_color
         if self.physics.line_seg.is_started:
             # Keep dot at start of line
             snapped = self.grid.xfm_gp(self.physics.line_seg.start)
-            color = self.color_mouse_vector
             radius = grid_size/4
         else:
             # Move dot with mouse
             snapped = self.snap_to_grid(pygame.mouse.get_pos())
-            color = self.color_mouse_dot
             radius = grid_size/3
         ### circle(surface, color, center, radius) -> Rect
         pygame.draw.circle(surf, color, snapped, radius)
@@ -776,16 +797,15 @@ class Game:
                     head = (tail[0], head[1])
             l = LineSeg(start=tail, end=head)
             # Draw line segment as a vector (a line with an arrow head)
-            self.draw_line_as_vector(surf, l, self.color_mouse_vector)
+            self.draw_line_as_vector(surf, l, self.physics.line_color)
             # Draw x and y components
             self.draw_xy_components(surf, l, self.color_pop)
 
     def draw_game_history(self, surf:pygame.Surface) -> None:
         """Draw all line segments and forces in the game history as vectors."""
         if self.game_history.head == None: return
-        color = self.color_mouse_vector
         for i in range(self.game_history.head+1):
-            self.draw_line_as_vector(surf, self.game_history.line_segs[i], color)
+            self.draw_line_as_vector(surf, self.game_history.line_segs[i], self.game_history.line_colors[i])
 
 
     def draw_line_as_vector(self, surf:pygame.Surface, l:LineSeg, color:Color) -> None:
@@ -943,6 +963,27 @@ class Game:
             return self.colors['color_mouse_vector_dark']
         else:
             return self.colors['color_mouse_vector_light']
+
+    @property
+    def color_1(self) -> Color:
+        if self.settings['setting_dark_mode']:
+            return self.colors['color_1_dark']
+        else:
+            return self.colors['color_1_light']
+
+    @property
+    def color_2(self) -> Color:
+        if self.settings['setting_dark_mode']:
+            return self.colors['color_2_dark']
+        else:
+            return self.colors['color_2_light']
+
+    @property
+    def color_3(self) -> Color:
+        if self.settings['setting_dark_mode']:
+            return self.colors['color_3_dark']
+        else:
+            return self.colors['color_3_light']
 
 
 if __name__ == '__main__':
