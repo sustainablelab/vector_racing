@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # vim: set fileencoding=utf-8 :
-"""Graph paper on my screen for demonstrating vectors and addition.
+"""Cannon game v2.
 
 [x] F11 toggles full screen
 [x] Start in full screen -- set is_fullscreen=True when instantiating OsWindow
@@ -31,6 +31,10 @@
 [x] Set color with number keys
     * [x] Indicate draw color by changing the color of the mouse dot
     * [x] Save color in the game_history
+    * [ ] Force vectors will always be the same color, but line segments (also
+          drawn as vectors) will be whatever color I chose
+[ ] Draw force vectors
+[ ] Set up two cannons and initial velocity vectors
 """
 
 import math
