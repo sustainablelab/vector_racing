@@ -376,7 +376,7 @@ class Grid:
 
         :param point:tuple -- (x,y) in pixel coordinates
         :param p:int -- decimal precision of returned coordinate (default: 0, return ints)
-        :return tuple -- (x,y) in grid goordinates
+        :return tuple -- (x,y) in grid coordinates
         """
         # Define 2x2 transform
         a,b,c,d = self.scaled()

@@ -35,6 +35,13 @@
           drawn as vectors) will be whatever color I chose
 [ ] Draw force vectors
 [ ] Set up two cannons and initial velocity vectors
+[x] 'Tab' goes to next player
+[ ] Use active_player to check the state of the player to see how to interpret
+    UI actions:
+        * match active_player state:
+            * case "pick pos"
+            * case "shoot"
+            * case "step sim"
 """
 
 import math
@@ -218,7 +225,7 @@ def define_settings() -> dict:
     settings = {}
     settings['setting_debug'] = True
     settings['setting_dark_mode'] = True
-    settings['setting_lock_ortho'] = False
+    settings['setting_gravity_on'] = True
     return settings
 
 def define_surfaces(os_window:OsWindow) -> dict:
@@ -562,12 +569,50 @@ class GameHistory:
     def redo(self) -> None:
         self.move_head_forward()
 
+class Player:
+    """Track a single player.
+
+    :attr pos:tuple -- cannon (x,y) grid coordinate
+    :attr state:str -- track player's game state
+    """
+    def __init__(self):
+        self.pos = (None,None)
+        self.state = "fsm_pick_pos"
+
+    def update(self) -> None:
+        match self.state:
+            case "fsm_pick_pos":
+                pass
+            case _:
+                pass
+
+def next_player(active_player:int, num_players:int) -> int:
+    """Return number of next player (player 1, player 2, etc.).
+
+    Two players:
+    >>> next_player(1, 2)
+    2
+    >>> next_player(2, 2)
+    1
+
+    Three players:
+    >>> next_player(1, 3)
+    2
+    >>> next_player(2, 3)
+    3
+    >>> next_player(3, 3)
+    1
+    """
+    next_player = (active_player+1) % num_players
+    if next_player == 0: next_player = num_players
+    return next_player
+
 class Game:
     def __init__(self):
         pygame.init()                                   # Init pygame -- quit in shutdown
         pygame.font.init()                              # Initialize the font module
         # pygame.mouse.set_visible(False)                 # Hide the OS mouse icon
-        pygame.display.set_caption("Vector arithmetic")
+        pygame.display.set_caption("Cannon game")
 
         os.environ["PYGAME_BLEND_ALPHA_SDL2"] = "1"     # Use SDL2 alpha blending
         # os.environ["SDL_VIDEO_WINDOW_POS"] = "1000,0"   # Position window in upper right
@@ -582,6 +627,9 @@ class Game:
         self.game_history = GameHistory()
         self.physics = Physics()
         self.physics.line_color = self.color_1
+        self.active_player = 1
+        self.num_players = 2
+
 
         # FPS
         self.clock = pygame.time.Clock()
@@ -627,12 +675,12 @@ class Game:
         mpos_p = pygame.mouse.get_pos()             # Mouse in pixel coord sys
         mpos_g = self.grid.xfm_pg(mpos_p)           # Mouse in game coord sys
         self.debug_hud.add_text(f"Mouse (game): {mpos_g}")
-        # Display ORTHO on/off
-        if self.settings['setting_lock_ortho']: self.debug_hud.add_text("Ortholock on")
-        # Display game history
-        vectors_str_list = ["Vector: " + str(l.vector) for l in self.game_history.line_segs]
-        vectors_str = "\n".join(vectors_str_list)
-        self.debug_hud.add_text(f"{vectors_str}")
+        # Display gravity on/off
+        if self.settings['setting_gravity_on']:
+            self.debug_hud.add_text("Gravity on")
+        else:
+            self.debug_hud.add_text("Gravity off")
+        self.debug_hud.add_text(f"Go player {self.active_player}")
 
     def handle_ui_events(self) -> None:
         for event in pygame.event.get():
@@ -714,11 +762,12 @@ class Game:
                 else:
                     self.game_history.redo()
             case pygame.K_ESCAPE: self.physics.line_seg = LineSeg(None,None)
-            case pygame.K_F10: self.toggle_lock_ortho()
+            case pygame.K_F10: self.toggle_gravity()
             case pygame.K_u: self.game_history.undo()
             case pygame.K_1: self.physics.line_color = self.color_1
             case pygame.K_2: self.physics.line_color = self.color_2
             case pygame.K_3: self.physics.line_color = self.color_3
+            case pygame.K_TAB: self.next_player()
             case _:
                 logger.debug(f"{event.unicode}")
 
@@ -751,8 +800,12 @@ class Game:
     def toggle_dark_mode(self) -> None:
         self.settings['setting_dark_mode'] = not self.settings['setting_dark_mode']
 
-    def toggle_lock_ortho(self) -> None:
-        self.settings['setting_lock_ortho'] = not self.settings['setting_lock_ortho']
+    def toggle_gravity(self) -> None:
+        self.settings['setting_gravity_on'] = not self.settings['setting_gravity_on']
+
+    def next_player(self) -> None:
+        """Set active player to next player."""
+        self.active_player = next_player(self.active_player, self.num_players)
 
     def snap_to_grid(self, point:tuple) -> tuple:
         """Snap a point in pixel coordinates to the grid.
@@ -789,13 +842,6 @@ class Game:
             # head = self.snap_to_grid(pygame.mouse.get_pos())
             tail = self.physics.line_seg.start
             head = self.grid.xfm_pg(self.snap_to_grid(pygame.mouse.get_pos()))
-            if self.settings['setting_lock_ortho']:
-                if abs(tail[0] - head[0]) > abs(tail[1] - head[1]):
-                    # x-component > y-component, so lock line to x (set end.y = start.y)
-                    head = (head[0], tail[1])
-                else:
-                    # y-component >= x-component, so lock line to y (set end.x = start.x)
-                    head = (tail[0], head[1])
             l = LineSeg(start=tail, end=head)
             # Draw line segment as a vector (a line with an arrow head)
             self.draw_line_as_vector(surf, l, self.physics.line_color)
