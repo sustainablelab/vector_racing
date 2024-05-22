@@ -34,7 +34,7 @@
     * [ ] Force vectors will always be the same color, but line segments (also
           drawn as vectors) will be whatever color I chose
 [ ] Draw force vectors
-[ ] Set up two cannons and initial velocity vectors
+[x] Set up two cannons and initial velocity vectors
 [x] 'Tab' goes to next player
 [x] Render player positions
 [x] Set color of mouse dot and vector art to the color of the active player
@@ -46,9 +46,13 @@
             * case "Shoot"
             * case "Step physics"
 [x] Create a separate game history for each player
-[ ] Clean up self.physics.line_color -- I can get rid of this and just draw
-the history based on the color of the player
+[x] Get rid of self.physics.line_color -- just draw based on the color of the player
 [ ] There are some weird bugs -- document them and fix them.
+    * [x] FIXED: After a Ctrl+R reset of the game, I cannot shoot!
+    * [x] FIXED: After undo all the way to beginning of history, I cannot shoot!
+    * [x] FIXED: If I step player 1 before player 2 shoots, then my Player 2 shot gets the wrong color
+        * This is related to my use of self.physics.line_seg to store latest velocity vector
+[ ] Add Shift+U to undo all history for active player
 [ ] Draw force vectors
 [ ] Gravity on/off sets force vector to (0,-1)/(0,0)
 [ ] Ctrl+R to reset game
@@ -480,8 +484,8 @@ class Grid:
 
 @dataclass
 class Physics:
+    """Just a struct for 'line_seg' and 'force_vector'."""
     line_seg:LineSeg = LineSeg(None, None)
-    line_color:Color = Color(0,0,0)
     force_vector:tuple = (None, None)
 
 class GameHistory:
@@ -562,7 +566,7 @@ class GameHistory:
             self.force_vectors = self.force_vectors[0:self.size]
         # Normal append
         self.line_segs.append(physics.line_seg)         # Add this line segment to the history
-        self.line_colors.append(physics.line_color)     # Add this line color to the history
+        # self.line_colors.append(physics.line_color)     # Add this line color to the history
         self.force_vectors.append(physics.force_vector) # Add this force vector to the history
         self.size += 1                                  # History size increases by 1
         self.move_head_forward()
@@ -614,27 +618,26 @@ class Player:
             case _:
                 pass
 
-def next_player(active_player:int, num_players:int) -> int:
+def get_next_player(active_player:int, num_players:int) -> int:
     """Return number of next player (player 1, player 2, etc.).
 
     Two players:
-    >>> next_player(1, 2)
+    >>> get_next_player(1, 2)
     2
-    >>> next_player(2, 2)
+    >>> get_next_player(2, 2)
     1
 
     Three players:
-    >>> next_player(1, 3)
+    >>> get_next_player(1, 3)
     2
-    >>> next_player(2, 3)
+    >>> get_next_player(2, 3)
     3
-    >>> next_player(3, 3)
+    >>> get_next_player(3, 3)
     1
     """
     next_player = (active_player+1) % num_players
     if next_player == 0: next_player = num_players
     return next_player
-
 
 class Game:
     def __init__(self):
@@ -646,14 +649,13 @@ class Game:
         os.environ["PYGAME_BLEND_ALPHA_SDL2"] = "1"     # Use SDL2 alpha blending
         # os.environ["SDL_VIDEO_WINDOW_POS"] = "1000,0"   # Position window in upper right
 
-        self.os_window = OsWindow((60*16, 60*9), is_fullscreen=True) # Track OS Window size and flags
+        self.os_window = OsWindow((100*16, 100*9), is_fullscreen=False) # Track OS Window size and flags
         self.surfs = define_surfaces(self.os_window)    # Dict of Pygame Surfaces (including pygame.display)
         self.settings = define_settings()               # Dict of game settings
         self.colors = define_colors()                   # Dict of pygame Colors
 
         # Game Data
         self.grid = Grid(self, N=40)
-        # self.game_history = GameHistory()
         self.physics = Physics()
         if self.settings['setting_gravity_on']:
             self.physics.force_vector = (0,-1)
@@ -665,7 +667,6 @@ class Game:
         for i in range(self.num_players):
             n = i+1
             self.players[f'player_{n}'] = Player(self.colors[f'color_player_{n}'])
-        self.physics.line_color = self.player.color
 
         # FPS
         self.clock = pygame.time.Clock()
@@ -719,7 +720,15 @@ class Game:
         else:
             self.debug_hud.add_text("Gravity off")
         self.debug_hud.add_text(f"Go player {self.active_player}")
-        if self.debug_hud: self.debug_hud.add_text(f"Player state: {self.player.state}")
+        self.debug_hud.add_text(f"Player state: {self.player.state}")
+        self.debug_hud.add_text(f"Physics line_seg: {self.physics.line_seg}")
+        for player_n in self.players:
+            player = self.players[player_n]
+            self.debug_hud.add_text(f"Player {player_n} history head: {player.game_history.head}")
+            vectors_str_list = [f"Player {player_n} Vector: " + str(l.vector) for l in player.game_history.line_segs]
+            vectors_str = "\n".join(vectors_str_list)
+            self.debug_hud.add_text(f"{vectors_str}")
+
 
     def handle_ui_events(self) -> None:
         kmod = pygame.key.get_mods()                    # Which modifier keys are held
@@ -814,6 +823,9 @@ class Game:
                 if kmod & pygame.KMOD_SHIFT:
                     self.grid.reset()
                 if kmod & pygame.KMOD_CTRL:
+                    # Reset latest physics velocity vector
+                    self.physics.line_seg = LineSeg(None,None)
+                    # Reset game history for all players
                     for player_n in self.players:
                         player = self.players[player_n]
                         player.reset()
@@ -828,10 +840,17 @@ class Game:
                 if self.player.game_history.head == None:
                     self.player.shot = (None,None)
                     self.player.state = "Shoot"
-            case pygame.K_1: self.physics.line_color = self.color_1
-            case pygame.K_2: self.physics.line_color = self.color_2
-            case pygame.K_3: self.physics.line_color = self.color_3
-            case pygame.K_TAB: self.next_player()
+                    self.physics.line_seg = LineSeg(None,None)
+            case pygame.K_TAB:
+                self.set_next_player()
+                # If next player hasn't taken a shot yet, reset the latest physics line seg
+                match self.player.state:
+                    case "Pick position":
+                        self.physics.line_seg = LineSeg(None,None)
+                    case "Shoot":
+                        self.physics.line_seg = LineSeg(None,None)
+                    case _:
+                        pass
             case pygame.K_SPACE: self.step_physics()
             case _:
                 logger.debug(f"{event.unicode}")
@@ -845,7 +864,6 @@ class Game:
                 mpos_g = self.grid.xfm_pg(pygame.mouse.get_pos())
                 if not self.physics.line_seg.is_started:
                     self.physics.line_seg.start = mpos_g
-                    self.physics.line_color = self.player.color
                 else:
                     self.physics.line_seg.end = mpos_g
                     # Store line segment in history.
@@ -857,17 +875,6 @@ class Game:
                     self.physics.line_seg = LineSeg(start=None, end=None)
             case _:
                 pass
-        if 0:
-            mpos_g = self.grid.xfm_pg(pygame.mouse.get_pos())
-            if not self.physics.line_seg.is_started:
-                self.physics.line_seg.start = mpos_g
-            else:
-                self.physics.line_seg.end = mpos_g
-                # Store line segment.
-                self.player.game_history.record(self.physics)
-                # self.game_history.record(self.physics)
-                # Reset active line segment to (start=None, end=None).
-                self.physics.line_seg = LineSeg(start=None, end=None)
 
     def handle_mousebuttondown_middleclick(self) -> None:
         self.grid.pan_ref = pygame.mouse.get_pos()
@@ -900,11 +907,9 @@ class Game:
         """'self.player' is shorthand for 'self.players[f'player_{self.active_player}']'."""
         return self.players[f'player_{self.active_player}']
 
-    def next_player(self) -> None:
+    def set_next_player(self) -> None:
         """Set active player to next player."""
-        self.active_player = next_player(self.active_player, self.num_players)
-        # Set mouse dot and line color to the player's color
-        self.physics.line_color = self.player.color
+        self.active_player = get_next_player(self.active_player, self.num_players)
 
     def step_physics(self) -> None:
         """Step the physics simulation for the active player."""
@@ -912,13 +917,10 @@ class Game:
             case "Step physics":
                 logger.debug(f"STEP player {self.active_player}")
                 # To be in this state, it is guaranteed that the game history is not empty
-                # if self.game_history.head == None:
                 if self.player.game_history.head == None:
                     sys.exit("ERROR: Expected self.player.game_history.head != None")
                 # Take the last line segment
-                # head = self.game_history.head
                 head = self.player.game_history.head
-                # last_l = self.game_history.line_segs[head]
                 last_l = self.player.game_history.line_segs[head]
                 logger.debug(f"last_l: {last_l}")
                 # Make a next line segment
@@ -934,8 +936,6 @@ class Game:
                               next_l.end[1] + self.physics.force_vector[1])
                 # Record the next line segment
                 self.physics.line_seg = next_l
-                self.physics.line_color = self.player.color
-                # self.game_history.record(self.physics)
                 self.player.game_history.record(self.physics)
             case _:
                 pass
@@ -955,7 +955,6 @@ class Game:
 
     def draw_mouse_as_snapped_dot(self, surf:pygame.Surface) -> None:
         grid_size = min(abs(self.grid.size[0]), abs(self.grid.size[1]))
-        color = self.physics.line_color
         if self.physics.line_seg.is_started:
             # Keep dot at start of line
             snapped = self.grid.xfm_gp(self.physics.line_seg.start)
@@ -965,7 +964,7 @@ class Game:
             snapped = self.snap_to_grid(pygame.mouse.get_pos())
             radius = grid_size/3
         ### circle(surface, color, center, radius) -> Rect
-        pygame.draw.circle(surf, color, snapped, radius)
+        pygame.draw.circle(surf, self.player.color, snapped, radius)
 
     def draw_mouse_vector(self, surf:pygame.Surface) -> None:
         if self.physics.line_seg.is_started:
@@ -977,22 +976,19 @@ class Game:
             head = self.grid.xfm_pg(self.snap_to_grid(pygame.mouse.get_pos()))
             l = LineSeg(start=tail, end=head)
             # Draw line segment as a vector (a line with an arrow head)
-            self.draw_line_as_vector(surf, l, self.physics.line_color)
+            self.draw_line_as_vector(surf, l, self.player.color)
             # Draw x and y components
             self.draw_xy_components(surf, l, self.color_pop)
 
     def draw_game_history(self, surf:pygame.Surface) -> None:
         """Draw all line segments and forces in the game history as vectors."""
-        # if self.game_history.head == None: return
         for player_n in self.players:
             player = self.players[player_n]
             if player.game_history.head == None:
                 pass
             else:
-                # for i in range(self.game_history.head+1):
                 for i in range(player.game_history.head+1):
-                    # self.draw_line_as_vector(surf, self.game_history.line_segs[i], self.game_history.line_colors[i])
-                    self.draw_line_as_vector(surf, player.game_history.line_segs[i], player.game_history.line_colors[i])
+                    self.draw_line_as_vector(surf, player.game_history.line_segs[i], player.color)
 
     def draw_players(self, surf:pygame.Surface) -> None:
         """Draw player positions."""
