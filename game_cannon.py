@@ -36,12 +36,23 @@
 [ ] Draw force vectors
 [ ] Set up two cannons and initial velocity vectors
 [x] 'Tab' goes to next player
-[ ] Use active_player to check the state of the player to see how to interpret
+[x] Render player positions
+[x] Set color of mouse dot and vector art to the color of the active player
+[x] Use active_player to check the state of the player to see how to interpret
     UI actions:
+    * In 'handle_mousebuttondown_leftclick', and 'Player.update':
         * match active_player state:
-            * case "pick pos"
-            * case "shoot"
-            * case "step sim"
+            * case "Pick position"
+            * case "Shoot"
+            * case "Step physics"
+[x] Create a separate game history for each player
+[ ] Clean up self.physics.line_color -- I can get rid of this and just draw
+the history based on the color of the player
+[ ] There are some weird bugs -- document them and fix them.
+[ ] Draw force vectors
+[ ] Gravity on/off sets force vector to (0,-1)/(0,0)
+[ ] Ctrl+R to reset game
+[ ] Undoing all history puts player back in state "Shoot"
 """
 
 import math
@@ -275,6 +286,9 @@ def define_colors() -> dict:
     colors['color_1_light'] = Color(200,200,0)
     colors['color_2_light'] = Color(200,0,0)
     colors['color_3_light'] = Color(0,200,200)
+    colors['color_player_1'] = Color(220, 10, 200)
+    colors['color_player_2'] = Color(10, 220, 200)
+    colors['color_player_3'] = Color(200, 220, 10)
     return colors
 
 @dataclass
@@ -572,16 +586,30 @@ class GameHistory:
 class Player:
     """Track a single player.
 
+    :attr color:pygame.Color -- color of the player's cannon and vectors
     :attr pos:tuple -- cannon (x,y) grid coordinate
+    :attr shot:tuple -- initial velocity of cannonball as vector (x,y) in grid coordinates
     :attr state:str -- track player's game state
     """
-    def __init__(self):
+    def __init__(self, color:Color):
+        self.color = color
+        self.reset()
+
+    def reset(self) -> None:
         self.pos = (None,None)
-        self.state = "fsm_pick_pos"
+        self.shot = (None,None)
+        self.state = "Pick position"
+        self.game_history = GameHistory()
 
     def update(self) -> None:
         match self.state:
-            case "fsm_pick_pos":
+            case "Pick position":
+                if self.pos != (None, None):
+                    self.state = "Shoot"
+            case "Shoot":
+                if self.shot != (None, None):
+                    self.state = "Step physics"
+            case "Step physics":
                 pass
             case _:
                 pass
@@ -607,6 +635,7 @@ def next_player(active_player:int, num_players:int) -> int:
     if next_player == 0: next_player = num_players
     return next_player
 
+
 class Game:
     def __init__(self):
         pygame.init()                                   # Init pygame -- quit in shutdown
@@ -617,19 +646,26 @@ class Game:
         os.environ["PYGAME_BLEND_ALPHA_SDL2"] = "1"     # Use SDL2 alpha blending
         # os.environ["SDL_VIDEO_WINDOW_POS"] = "1000,0"   # Position window in upper right
 
-        self.os_window = OsWindow((60*16, 60*9), is_fullscreen=False) # Track OS Window size and flags
+        self.os_window = OsWindow((60*16, 60*9), is_fullscreen=True) # Track OS Window size and flags
         self.surfs = define_surfaces(self.os_window)    # Dict of Pygame Surfaces (including pygame.display)
         self.settings = define_settings()               # Dict of game settings
         self.colors = define_colors()                   # Dict of pygame Colors
 
         # Game Data
         self.grid = Grid(self, N=40)
-        self.game_history = GameHistory()
+        # self.game_history = GameHistory()
         self.physics = Physics()
-        self.physics.line_color = self.color_1
+        if self.settings['setting_gravity_on']:
+            self.physics.force_vector = (0,-1)
+        else:
+            self.physics.force_vector = (0,0)
         self.active_player = 1
         self.num_players = 2
-
+        self.players = {}
+        for i in range(self.num_players):
+            n = i+1
+            self.players[f'player_{n}'] = Player(self.colors[f'color_player_{n}'])
+        self.physics.line_color = self.player.color
 
         # FPS
         self.clock = pygame.time.Clock()
@@ -648,6 +684,7 @@ class Game:
         self.handle_ui_events()
         if self.grid.is_panning:
             self.grid.pan(pygame.mouse.get_pos())
+        self.player.update()
 
         # Game art
         self.surfs['surf_game_art'].fill(self.color_graph_paper_bgnd)
@@ -655,6 +692,7 @@ class Game:
         self.draw_mouse_as_snapped_dot(self.surfs['surf_game_art'])
         self.draw_mouse_vector(self.surfs['surf_game_art'])
         self.draw_game_history(self.surfs['surf_game_art'])
+        self.draw_players(self.surfs['surf_game_art'])
 
         # Copy game art to OS window
         ### pygame.Surface.blit(source, dest, area=None, special_flags=0) -> Rect
@@ -681,8 +719,10 @@ class Game:
         else:
             self.debug_hud.add_text("Gravity off")
         self.debug_hud.add_text(f"Go player {self.active_player}")
+        if self.debug_hud: self.debug_hud.add_text(f"Player state: {self.player.state}")
 
     def handle_ui_events(self) -> None:
+        kmod = pygame.key.get_mods()                    # Which modifier keys are held
         for event in pygame.event.get():
             match event.type:
                 # No use for these events yet
@@ -722,11 +762,18 @@ class Game:
                     match event.button:
                         case 1:
                             logger.debug("Left-click")
-                            self.handle_mousebuttondown_leftclick()
+                            if kmod & pygame.KMOD_SHIFT:
+                                # Let shift+left-click be my panning
+                                # because I cannot do right-click-and-drag on the trackpad
+                                self.handle_mousebuttondown_rightclick()
+                            else:
+                                self.handle_mousebuttondown_leftclick()
                         case 2:
                             logger.debug("Middle-click")
                             self.handle_mousebuttondown_middleclick()
-                        case 3: logger.debug("Right-click")
+                        case 3:
+                            logger.debug("Right-click")
+                            self.handle_mousebuttondown_rightclick()
                         case 4: logger.debug("Mousewheel y=+1")
                         case 5: logger.debug("Mousewheel y=-1")
                         case 6: logger.debug("Logitech G602 Thumb button 6")
@@ -734,9 +781,16 @@ class Game:
                         case _: logger.debug(event)
                 case pygame.MOUSEBUTTONUP:
                     match event.button:
+                        case 1:
+                            if kmod & pygame.KMOD_SHIFT:
+                                logger.debug("Shift+Left mouse button released")
+                                self.handle_mousebuttonup_rightclick()
                         case 2:
                             logger.debug("Middle mouse button released")
                             self.handle_mousebuttonup_middleclick()
+                        case 3:
+                            logger.debug("Right mouse button released")
+                            self.handle_mousebuttonup_rightclick()
                         case _: logger.debug(event)
                 # Log any other events
                 case _:
@@ -759,38 +813,76 @@ class Game:
             case pygame.K_r:
                 if kmod & pygame.KMOD_SHIFT:
                     self.grid.reset()
+                if kmod & pygame.KMOD_CTRL:
+                    for player_n in self.players:
+                        player = self.players[player_n]
+                        player.reset()
                 else:
-                    self.game_history.redo()
+                    self.player.game_history.redo()
+                    # self.game_history.redo()
             case pygame.K_ESCAPE: self.physics.line_seg = LineSeg(None,None)
             case pygame.K_F10: self.toggle_gravity()
-            case pygame.K_u: self.game_history.undo()
+            case pygame.K_u:
+                # self.game_history.undo()
+                self.player.game_history.undo()
+                if self.player.game_history.head == None:
+                    self.player.shot = (None,None)
+                    self.player.state = "Shoot"
             case pygame.K_1: self.physics.line_color = self.color_1
             case pygame.K_2: self.physics.line_color = self.color_2
             case pygame.K_3: self.physics.line_color = self.color_3
             case pygame.K_TAB: self.next_player()
+            case pygame.K_SPACE: self.step_physics()
             case _:
                 logger.debug(f"{event.unicode}")
 
     def handle_mousebuttondown_leftclick(self) -> None:
-        mpos_g = self.grid.xfm_pg(pygame.mouse.get_pos())
-        if not self.physics.line_seg.is_started:
-            self.physics.line_seg.start = mpos_g
-        else:
-            self.physics.line_seg.end = mpos_g
-            # Store line segment.
-            self.game_history.record(self.physics)
-            # Reset active line segment to (start=None, end=None).
-            self.physics.line_seg = LineSeg(start=None, end=None)
+        match self.player.state:
+            case "Pick position":
+                mpos_g = self.grid.xfm_pg(pygame.mouse.get_pos())
+                self.player.pos = mpos_g
+            case "Shoot":
+                mpos_g = self.grid.xfm_pg(pygame.mouse.get_pos())
+                if not self.physics.line_seg.is_started:
+                    self.physics.line_seg.start = mpos_g
+                    self.physics.line_color = self.player.color
+                else:
+                    self.physics.line_seg.end = mpos_g
+                    # Store line segment in history.
+                    self.player.game_history.record(self.physics)
+                    # self.game_history.record(self.physics)
+                    # Store line segment vector in player.
+                    self.player.shot = self.physics.line_seg.vector
+                    # Reset active line segment to (start=None, end=None).
+                    self.physics.line_seg = LineSeg(start=None, end=None)
+            case _:
+                pass
+        if 0:
+            mpos_g = self.grid.xfm_pg(pygame.mouse.get_pos())
+            if not self.physics.line_seg.is_started:
+                self.physics.line_seg.start = mpos_g
+            else:
+                self.physics.line_seg.end = mpos_g
+                # Store line segment.
+                self.player.game_history.record(self.physics)
+                # self.game_history.record(self.physics)
+                # Reset active line segment to (start=None, end=None).
+                self.physics.line_seg = LineSeg(start=None, end=None)
 
     def handle_mousebuttondown_middleclick(self) -> None:
         self.grid.pan_ref = pygame.mouse.get_pos()
         self.grid.is_panning = True
+
+    def handle_mousebuttondown_rightclick(self) -> None:
+        self.handle_mousebuttondown_middleclick()
 
     def handle_mousebuttonup_middleclick(self) -> None:
         self.grid.pan_ref = (None,None)
         self.grid.pan_origin = (self.grid.e, self.grid.f)
         self.grid.is_panning = False
 
+    def handle_mousebuttonup_rightclick(self) -> None:
+        self.handle_mousebuttonup_middleclick()
 
     def update_surfaces(self) -> None:
         """Call this after os_window handles WINDOWRESIZED event. See 'define_surfaces()'"""
@@ -803,9 +895,50 @@ class Game:
     def toggle_gravity(self) -> None:
         self.settings['setting_gravity_on'] = not self.settings['setting_gravity_on']
 
+    @property
+    def player(self) -> Player:
+        """'self.player' is shorthand for 'self.players[f'player_{self.active_player}']'."""
+        return self.players[f'player_{self.active_player}']
+
     def next_player(self) -> None:
         """Set active player to next player."""
         self.active_player = next_player(self.active_player, self.num_players)
+        # Set mouse dot and line color to the player's color
+        self.physics.line_color = self.player.color
+
+    def step_physics(self) -> None:
+        """Step the physics simulation for the active player."""
+        match self.player.state:
+            case "Step physics":
+                logger.debug(f"STEP player {self.active_player}")
+                # To be in this state, it is guaranteed that the game history is not empty
+                # if self.game_history.head == None:
+                if self.player.game_history.head == None:
+                    sys.exit("ERROR: Expected self.player.game_history.head != None")
+                # Take the last line segment
+                # head = self.game_history.head
+                head = self.player.game_history.head
+                # last_l = self.game_history.line_segs[head]
+                last_l = self.player.game_history.line_segs[head]
+                logger.debug(f"last_l: {last_l}")
+                # Make a next line segment
+                next_l = LineSeg(last_l.start, last_l.end)
+                # Translate next line segment to head of last line segment
+                next_l.start = (next_l.start[0] + last_l.vector[0],
+                                next_l.start[1] + last_l.vector[1])
+                next_l.end = (next_l.end[0] + last_l.vector[0],
+                              next_l.end[1] + last_l.vector[1])
+                ### Apply a force vector
+                # Add force to prev velocity to get new vector
+                next_l.end = (next_l.end[0] + self.physics.force_vector[0],
+                              next_l.end[1] + self.physics.force_vector[1])
+                # Record the next line segment
+                self.physics.line_seg = next_l
+                self.physics.line_color = self.player.color
+                # self.game_history.record(self.physics)
+                self.player.game_history.record(self.physics)
+            case _:
+                pass
 
     def snap_to_grid(self, point:tuple) -> tuple:
         """Snap a point in pixel coordinates to the grid.
@@ -850,10 +983,35 @@ class Game:
 
     def draw_game_history(self, surf:pygame.Surface) -> None:
         """Draw all line segments and forces in the game history as vectors."""
-        if self.game_history.head == None: return
-        for i in range(self.game_history.head+1):
-            self.draw_line_as_vector(surf, self.game_history.line_segs[i], self.game_history.line_colors[i])
+        # if self.game_history.head == None: return
+        for player_n in self.players:
+            player = self.players[player_n]
+            if player.game_history.head == None:
+                pass
+            else:
+                # for i in range(self.game_history.head+1):
+                for i in range(player.game_history.head+1):
+                    # self.draw_line_as_vector(surf, self.game_history.line_segs[i], self.game_history.line_colors[i])
+                    self.draw_line_as_vector(surf, player.game_history.line_segs[i], player.game_history.line_colors[i])
 
+    def draw_players(self, surf:pygame.Surface) -> None:
+        """Draw player positions."""
+        for player_n in self.players:
+            player = self.players[player_n]
+            match player.state:
+                case "Pick position":
+                    pass
+                case _:
+                    # Draw player
+                    grid_size = min(abs(self.grid.size[0]), abs(self.grid.size[1]))
+                    radius = grid_size*4/5
+                    center = self.grid.xfm_gp(player.pos)
+                    width = max(1, int(radius/10))
+                    ### circle(surface, color, center, radius) -> Rect
+                    pygame.draw.circle(surf, player.color, center, radius, width)
+                    radius = radius/2
+                    width = max(1, int(width/2))
+                    pygame.draw.circle(surf, player.color, center, radius, width)
 
     def draw_line_as_vector(self, surf:pygame.Surface, l:LineSeg, color:Color) -> None:
         """Draw line segment as a vector: a line with an arrow head.
