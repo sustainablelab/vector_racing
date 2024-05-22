@@ -71,6 +71,7 @@
     * 'line_seg' is muted
 [x] Make arrow heads skinnier
 [x] Display player shots in debug HUD
+[x] Add explosion if cannon shot hits other player
 """
 
 import math
@@ -316,6 +317,8 @@ def define_colors() -> dict:
     colors['color_player_1_line_light'] = Color(160, 40, 90)
     colors['color_player_2_line_light'] = Color(40, 130, 60)
     colors['color_player_3_line_light'] = Color(100, 140, 40)
+    colors['color_hit_dark'] = Color(255,0,0)
+    colors['color_hit_light'] = Color(255,0,0)
     return colors
 
 @dataclass
@@ -637,6 +640,7 @@ class Player:
         self.shot = (None,None)
         self.state = "Pick position"
         self.game_history = GameHistory()
+        self.is_hit = False
 
     def update(self) -> None:
         match self.state:
@@ -1070,6 +1074,11 @@ class Game:
                     ### Draw the final vector
                     f = player.game_history.final_segs[i]
                     self.draw_line_as_vector(surf, f, player.color_final)
+                    ### Draw explosion if a cannon shot hits another cannon (even itself)
+                    for player_n in self.players:
+                        target = self.players[player_n]
+                        target.is_hit = (f.end == target.pos)
+
 
     def draw_players(self, surf:pygame.Surface) -> None:
         """Draw player positions."""
@@ -1084,6 +1093,14 @@ class Game:
                     radius = grid_size*4/5
                     center = self.grid.xfm_gp(player.pos)
                     width = max(1, int(radius/10))
+                    ### Draw X through player if player is hit
+                    if player.is_hit:
+                        pygame.draw.line(surf, self.color_hit,
+                                         (center[0]-radius, center[1]-radius),
+                                         (center[0]+radius, center[1]+radius), width*4)
+                        pygame.draw.line(surf, self.color_hit,
+                                         (center[0]+radius, center[1]-radius),
+                                         (center[0]-radius, center[1]+radius), width*4)
                     ### circle(surface, color, center, radius) -> Rect
                     pygame.draw.circle(surf, player.color_final, center, radius, width)
                     radius = radius/2
@@ -1231,6 +1248,13 @@ class Game:
             return self.colors['color_pop_dark']
         else:
             return self.colors['color_pop_light']
+
+    @property
+    def color_hit(self) -> Color:
+        if self.settings['setting_dark_mode']:
+            return self.colors['color_hit_dark']
+        else:
+            return self.colors['color_hit_light']
 
     @property
     def color_mouse_dot(self) -> Color:
