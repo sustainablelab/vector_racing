@@ -47,12 +47,15 @@
             * case "Step physics"
 [x] Create a separate game history for each player
 [x] Get rid of self.physics.line_color -- just draw based on the color of the player
-[ ] There are some weird bugs -- document them and fix them.
+[x] There are some weird bugs -- document them and fix them.
     * [x] FIXED: After a Ctrl+R reset of the game, I cannot shoot!
     * [x] FIXED: After undo all the way to beginning of history, I cannot shoot!
     * [x] FIXED: If I step player 1 before player 2 shoots, then my Player 2 shot gets the wrong color
         * This is related to my use of self.physics.line_seg to store latest velocity vector
-[ ] Add Shift+U to undo all history for active player
+[x] Add Shift+U to undo all history for active player
+[x] Assign players a number instead of a color
+    * Then give Player class an @property color method to look up the color
+    * Player also needs access to game state to get colors and dark mode vs light mode
 [ ] Draw force vectors
 [ ] Gravity on/off sets force vector to (0,-1)/(0,0)
 [ ] Ctrl+R to reset game
@@ -290,9 +293,12 @@ def define_colors() -> dict:
     colors['color_1_light'] = Color(200,200,0)
     colors['color_2_light'] = Color(200,0,0)
     colors['color_3_light'] = Color(0,200,200)
-    colors['color_player_1'] = Color(220, 10, 200)
-    colors['color_player_2'] = Color(10, 220, 200)
-    colors['color_player_3'] = Color(200, 220, 10)
+    colors['color_player_1_dark'] = Color(220, 10, 200)
+    colors['color_player_2_dark'] = Color(10, 220, 200)
+    colors['color_player_3_dark'] = Color(200, 220, 10)
+    colors['color_player_1_light'] = Color(220, 10, 100)
+    colors['color_player_2_light'] = Color(10, 170, 120)
+    colors['color_player_3_light'] = Color(200, 220, 10)
     return colors
 
 @dataclass
@@ -590,13 +596,19 @@ class GameHistory:
 class Player:
     """Track a single player.
 
+    :param game:Game -- Share game state: colors, and dark mode vs light mode
+    :param n:int -- Player number (Player 1, Player 2, etc.)
+
+    Attributes
     :attr color:pygame.Color -- color of the player's cannon and vectors
     :attr pos:tuple -- cannon (x,y) grid coordinate
     :attr shot:tuple -- initial velocity of cannonball as vector (x,y) in grid coordinates
     :attr state:str -- track player's game state
+    :attr game_history:GameHistory -- track velocity vectors for this player
     """
-    def __init__(self, color:Color):
-        self.color = color
+    def __init__(self, game, n:int):
+        self.game = game
+        self.n = n
         self.reset()
 
     def reset(self) -> None:
@@ -618,6 +630,12 @@ class Player:
             case _:
                 pass
 
+    @property
+    def color(self) -> Color:
+        if self.game.settings['setting_dark_mode']:
+            return self.game.colors[f'color_player_{self.n}_dark']
+        else:
+            return self.game.colors[f'color_player_{self.n}_light']
 def get_next_player(active_player:int, num_players:int) -> int:
     """Return number of next player (player 1, player 2, etc.).
 
@@ -666,7 +684,8 @@ class Game:
         self.players = {}
         for i in range(self.num_players):
             n = i+1
-            self.players[f'player_{n}'] = Player(self.colors[f'color_player_{n}'])
+            # self.players[f'player_{n}'] = Player(self.colors[f'color_player_{n}'])
+            self.players[f'player_{n}'] = Player(self, n)
 
         # FPS
         self.clock = pygame.time.Clock()
@@ -835,8 +854,12 @@ class Game:
             case pygame.K_ESCAPE: self.physics.line_seg = LineSeg(None,None)
             case pygame.K_F10: self.toggle_gravity()
             case pygame.K_u:
-                # self.game_history.undo()
-                self.player.game_history.undo()
+                if kmod & pygame.KMOD_SHIFT:
+                    # Undo ALL history for the active player
+                    self.player.game_history.head = None
+                else:
+                    # Undo one step/move for the active player
+                    self.player.game_history.undo()
                 if self.player.game_history.head == None:
                     self.player.shot = (None,None)
                     self.player.state = "Shoot"
