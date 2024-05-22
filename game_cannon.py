@@ -31,9 +31,9 @@
 [x] Set color with number keys
     * [x] Indicate draw color by changing the color of the mouse dot
     * [x] Save color in the game_history
-    * [ ] Force vectors will always be the same color, but line segments (also
+    * [x] Force vectors will always be the same color, but line segments (also
           drawn as vectors) will be whatever color I chose
-[ ] Draw force vectors
+[x] Draw force vectors
 [x] Set up two cannons and initial velocity vectors
 [x] 'Tab' goes to next player
 [x] Render player positions
@@ -56,10 +56,21 @@
 [x] Assign players a number instead of a color
     * Then give Player class an @property color method to look up the color
     * Player also needs access to game state to get colors and dark mode vs light mode
-[ ] Draw force vectors
-[ ] Gravity on/off sets force vector to (0,-1)/(0,0)
-[ ] Ctrl+R to reset game
-[ ] Undoing all history puts player back in state "Shoot"
+[x] Draw force vectors
+[x] Gravity on/off sets force vector to (0,-1)/(0,0)
+[x] Ctrl+R to reset game
+[x] Undoing all history puts player back in state "Shoot"
+[x] Add force vector to velocity vector and draw resulting vector
+    * Record resulting vector to history in 'final_segs'
+    * self.physics holds latest value of 'final_seg'
+    * [x] Add 'final_seg' to 'handle_mousebuttondown_leftclick'
+    * [x] Add 'final_seg' to 'step_physics'
+    * [x] Add 'final_seg' to 'draw_game_history'
+[x] Color 'line_seg' (inital) and 'final_seg' (final) vectors differently
+    * 'final_seg' pops
+    * 'line_seg' is muted
+[x] Make arrow heads skinnier
+[x] Display player shots in debug HUD
 """
 
 import math
@@ -293,12 +304,18 @@ def define_colors() -> dict:
     colors['color_1_light'] = Color(200,200,0)
     colors['color_2_light'] = Color(200,0,0)
     colors['color_3_light'] = Color(0,200,200)
-    colors['color_player_1_dark'] = Color(220, 10, 200)
-    colors['color_player_2_dark'] = Color(10, 220, 200)
-    colors['color_player_3_dark'] = Color(200, 220, 10)
-    colors['color_player_1_light'] = Color(220, 10, 100)
-    colors['color_player_2_light'] = Color(10, 170, 120)
-    colors['color_player_3_light'] = Color(200, 220, 10)
+    colors['color_player_1_final_dark'] = Color(220, 10, 200)
+    colors['color_player_2_final_dark'] = Color(10, 220, 200)
+    colors['color_player_3_final_dark'] = Color(200, 220, 10)
+    colors['color_player_1_final_light'] = Color(220, 10, 100)
+    colors['color_player_2_final_light'] = Color(10, 170, 120)
+    colors['color_player_3_final_light'] = Color(200, 220, 10)
+    colors['color_player_1_line_dark'] = Color(150, 50, 130)
+    colors['color_player_2_line_dark'] = Color(50, 150, 130)
+    colors['color_player_3_line_dark'] = Color(150, 170, 50)
+    colors['color_player_1_line_light'] = Color(160, 40, 90)
+    colors['color_player_2_line_light'] = Color(40, 130, 60)
+    colors['color_player_3_line_light'] = Color(100, 140, 40)
     return colors
 
 @dataclass
@@ -490,9 +507,10 @@ class Grid:
 
 @dataclass
 class Physics:
-    """Just a struct for 'line_seg' and 'force_vector'."""
-    line_seg:LineSeg = LineSeg(None, None)
-    force_vector:tuple = (None, None)
+    """Just a struct for 'line_seg', 'force_vector', and 'final_seg'."""
+    line_seg:LineSeg = LineSeg(None, None)              # Initial vector on this step
+    force_vector:tuple = (None, None)                   # Force applied on this step
+    final_seg:LineSeg = LineSeg(None, None)             # Final vector on this step
 
 class GameHistory:
     """All the line segments drawn and force vectors applied so far.
@@ -554,6 +572,7 @@ class GameHistory:
         self.line_segs = []                             # Initialize: empty list of line segments
         self.line_colors = []                           # Initialize: empty list of line colors
         self.force_vectors = []                         # Initialize: empty list of force vectors
+        self.final_segs = []                           # Initialize: empty list of sum vectors
         self.head = None                                # Initialize: head points at nothing
         self.size = 0                                   # Initialize: history size is 0
 
@@ -564,16 +583,18 @@ class GameHistory:
             self.line_segs = []
             self.line_colors = []
             self.force_vectors = []
+            self.final_segs = []
         elif (self.head < self.size-1):
             # Prune the future before appending
             self.size = self.head+1
             self.line_segs = self.line_segs[0:self.size]
             self.line_colors = self.line_colors[0:self.size]
             self.force_vectors = self.force_vectors[0:self.size]
+            self.final_segs = self.final_segs[0:self.size]
         # Normal append
         self.line_segs.append(physics.line_seg)         # Add this line segment to the history
-        # self.line_colors.append(physics.line_color)     # Add this line color to the history
         self.force_vectors.append(physics.force_vector) # Add this force vector to the history
+        self.final_segs.append(physics.final_seg)       # Add the final vector to the history
         self.size += 1                                  # History size increases by 1
         self.move_head_forward()
 
@@ -631,11 +652,20 @@ class Player:
                 pass
 
     @property
-    def color(self) -> Color:
+    def color_line(self) -> Color:
         if self.game.settings['setting_dark_mode']:
-            return self.game.colors[f'color_player_{self.n}_dark']
+            return self.game.colors[f'color_player_{self.n}_line_dark']
         else:
-            return self.game.colors[f'color_player_{self.n}_light']
+            return self.game.colors[f'color_player_{self.n}_line_light']
+
+    @property
+    def color_final(self) -> Color:
+        if self.game.settings['setting_dark_mode']:
+            return self.game.colors[f'color_player_{self.n}_final_dark']
+        else:
+            return self.game.colors[f'color_player_{self.n}_final_light']
+
+
 def get_next_player(active_player:int, num_players:int) -> int:
     """Return number of next player (player 1, player 2, etc.).
 
@@ -744,6 +774,7 @@ class Game:
         for player_n in self.players:
             player = self.players[player_n]
             self.debug_hud.add_text(f"Player {player_n} history head: {player.game_history.head}")
+            self.debug_hud.add_text(f"Player {player_n} shot: {player.shot}")
             vectors_str_list = [f"Player {player_n} Vector: " + str(l.vector) for l in player.game_history.line_segs]
             vectors_str = "\n".join(vectors_str_list)
             self.debug_hud.add_text(f"{vectors_str}")
@@ -889,13 +920,17 @@ class Game:
                     self.physics.line_seg.start = mpos_g
                 else:
                     self.physics.line_seg.end = mpos_g
-                    # Store line segment in history.
+                    # Sum to find final_seg
+                    l = self.physics.line_seg
+                    v = self.physics.force_vector
+                    self.physics.final_seg = LineSeg(l.start, (l.end[0]+v[0], l.end[1]+v[1]))
+                    # Store line segment, force vector, and final segment in history.
                     self.player.game_history.record(self.physics)
-                    # self.game_history.record(self.physics)
-                    # Store line segment vector in player.
+                    # Store line segment vector in player shot.
                     self.player.shot = self.physics.line_seg.vector
                     # Reset active line segment to (start=None, end=None).
                     self.physics.line_seg = LineSeg(start=None, end=None)
+                    self.physics.final_seg = LineSeg(start=None, end=None)
             case _:
                 pass
 
@@ -924,6 +959,10 @@ class Game:
 
     def toggle_gravity(self) -> None:
         self.settings['setting_gravity_on'] = not self.settings['setting_gravity_on']
+        if self.settings['setting_gravity_on']:
+            self.physics.force_vector = (0,-1)
+        else:
+            self.physics.force_vector = (0,0)
 
     @property
     def player(self) -> Player:
@@ -942,23 +981,30 @@ class Game:
                 # To be in this state, it is guaranteed that the game history is not empty
                 if self.player.game_history.head == None:
                     sys.exit("ERROR: Expected self.player.game_history.head != None")
-                # Take the last line segment
+                # Take the latest final segment
                 head = self.player.game_history.head
-                last_l = self.player.game_history.line_segs[head]
-                logger.debug(f"last_l: {last_l}")
+                # last_l = self.player.game_history.line_segs[head]
+                last_f = self.player.game_history.final_segs[head]
                 # Make a next line segment
-                next_l = LineSeg(last_l.start, last_l.end)
+                # next_l = LineSeg(last_l.start, last_l.end)
                 # Translate next line segment to head of last line segment
-                next_l.start = (next_l.start[0] + last_l.vector[0],
-                                next_l.start[1] + last_l.vector[1])
-                next_l.end = (next_l.end[0] + last_l.vector[0],
-                              next_l.end[1] + last_l.vector[1])
+                # next_l.start = (next_l.start[0] + last_l.vector[0],
+                #                 next_l.start[1] + last_l.vector[1])
+                # next_l.end = (next_l.end[0] + last_l.vector[0],
+                #               next_l.end[1] + last_l.vector[1])
+                next_l = LineSeg((last_f.start[0] + last_f.vector[0],
+                                  last_f.start[1] + last_f.vector[1]),
+                                 (last_f.end[0] + last_f.vector[0],
+                                  last_f.end[1] + last_f.vector[1]))
                 ### Apply a force vector
                 # Add force to prev velocity to get new vector
-                next_l.end = (next_l.end[0] + self.physics.force_vector[0],
-                              next_l.end[1] + self.physics.force_vector[1])
+                # next_l.end = (next_l.end[0] + self.physics.force_vector[0],
+                #               next_l.end[1] + self.physics.force_vector[1])
+                v = self.physics.force_vector
+                next_f = LineSeg(next_l.start, (next_l.end[0] + v[0], next_l.end[1] + v[1]))
                 # Record the next line segment
                 self.physics.line_seg = next_l
+                self.physics.final_seg = next_f
                 self.player.game_history.record(self.physics)
             case _:
                 pass
@@ -987,7 +1033,7 @@ class Game:
             snapped = self.snap_to_grid(pygame.mouse.get_pos())
             radius = grid_size/3
         ### circle(surface, color, center, radius) -> Rect
-        pygame.draw.circle(surf, self.player.color, snapped, radius)
+        pygame.draw.circle(surf, self.player.color_final, snapped, radius)
 
     def draw_mouse_vector(self, surf:pygame.Surface) -> None:
         if self.physics.line_seg.is_started:
@@ -999,7 +1045,7 @@ class Game:
             head = self.grid.xfm_pg(self.snap_to_grid(pygame.mouse.get_pos()))
             l = LineSeg(start=tail, end=head)
             # Draw line segment as a vector (a line with an arrow head)
-            self.draw_line_as_vector(surf, l, self.player.color)
+            self.draw_line_as_vector(surf, l, self.player.color_line)
             # Draw x and y components
             self.draw_xy_components(surf, l, self.color_pop)
 
@@ -1011,7 +1057,19 @@ class Game:
                 pass
             else:
                 for i in range(player.game_history.head+1):
-                    self.draw_line_as_vector(surf, player.game_history.line_segs[i], player.color)
+                    ### Draw the player's velocity vector
+                    l = player.game_history.line_segs[i]
+                    self.draw_line_as_vector(surf, l, player.color_line)
+                    ### Draw the force vector
+                    v = player.game_history.force_vectors[i]
+                    # Define line segment 'v_l': translate vector 'v' to the end of line segment 'l'
+                    v_l = LineSeg(
+                            (l.end[0],          l.end[1]),
+                            (l.end[0] + v[0],   l.end[1] + v[1]))
+                    self.draw_line_as_vector(surf, v_l, self.color_mouse_vector)
+                    ### Draw the final vector
+                    f = player.game_history.final_segs[i]
+                    self.draw_line_as_vector(surf, f, player.color_final)
 
     def draw_players(self, surf:pygame.Surface) -> None:
         """Draw player positions."""
@@ -1027,10 +1085,10 @@ class Game:
                     center = self.grid.xfm_gp(player.pos)
                     width = max(1, int(radius/10))
                     ### circle(surface, color, center, radius) -> Rect
-                    pygame.draw.circle(surf, player.color, center, radius, width)
+                    pygame.draw.circle(surf, player.color_final, center, radius, width)
                     radius = radius/2
                     width = max(1, int(width/2))
-                    pygame.draw.circle(surf, player.color, center, radius, width)
+                    pygame.draw.circle(surf, player.color_final, center, radius, width)
 
     def draw_line_as_vector(self, surf:pygame.Surface, l:LineSeg, color:Color) -> None:
         """Draw line segment as a vector: a line with an arrow head.
@@ -1061,7 +1119,7 @@ class Game:
         # Set the arrow head size relative to the grid size
         grid_size = min(abs(self.grid.size[0]), abs(self.grid.size[1]))
         a = grid_size*2/3 # a: arrow head triangle height is 2/3 the length of a grid box
-        b = grid_size*1/3 # a: arrow head triangle base is 1/3 the length of a grid box
+        b = grid_size*1/5 # a: arrow head triangle base is 1/5 the length of a grid box
         # Define a vector that is the arrow head from base to tip
         arrow_head_v = (a*unit_v[0], a*unit_v[1])
         # Fine the pixel coordinate of the base of the arrow head triangle
