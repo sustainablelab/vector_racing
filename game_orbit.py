@@ -80,8 +80,10 @@
     * 'final_seg' pops
     * 'line_seg' is muted
 [x] Make arrow heads skinnier
-[ ] Add more players
+[x] Add more players
 [x] Hold 'n' to advance simulation instead of stepping with space bar
+[ ] If player ever returns to initial position and has velocity (0,0), stop
+    advancing time (this just becomes a giant memory waste for the game_history)
 """
 
 import math
@@ -726,7 +728,7 @@ class Game:
         self.is_stepping = False
         self.physics = Physics()
         self.active_player = 1
-        self.num_players = 2
+        self.num_players = 3
         self.players = {}
         for i in range(self.num_players):
             n = i+1
