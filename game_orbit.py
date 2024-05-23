@@ -81,7 +81,7 @@
     * 'line_seg' is muted
 [x] Make arrow heads skinnier
 [ ] Add more players
-[ ] Hold a key to advance simulation instead of stepping with space bar
+[x] Hold 'n' to advance simulation instead of stepping with space bar
 """
 
 import math
@@ -723,6 +723,7 @@ class Game:
 
         # Game Data
         self.grid = Grid(self, N=40)
+        self.is_stepping = False
         self.physics = Physics()
         self.active_player = 1
         self.num_players = 2
@@ -747,6 +748,7 @@ class Game:
 
         # UI
         self.handle_ui_events()
+        if self.is_stepping: self.step_physics()
         if self.grid.is_panning:
             self.grid.pan(pygame.mouse.get_pos())
         self.player.update() # Do physics in this update
@@ -816,7 +818,6 @@ class Game:
                 case pygame.WINDOWFOCUSLOST: pass
                 case pygame.WINDOWTAKEFOCUS: pass
                 case pygame.TEXTINPUT: pass
-                case pygame.KEYUP: pass
                 # Handle these events
                 case pygame.QUIT: sys.exit()
                 case pygame.WINDOWRESIZED:
@@ -826,6 +827,7 @@ class Game:
                     # Resize and recenter the grid
                     self.grid.reset()
                 case pygame.KEYDOWN: self.handle_keydown(event)
+                case pygame.KEYUP: self.handle_keyup(event)
                 case pygame.MOUSEWHEEL:
                     ### {'flipped': False, 'x': 0, 'y': 1, 'precise_x': 0.0, 'precise_y': 1.0, 'touch': False, 'window': None}
                     match event.y:
@@ -869,7 +871,11 @@ class Game:
                 # Log any other events
                 case _:
                     logger.debug(f"Ignored event: {pygame.event.event_name(event.type)}")
-
+    def handle_keyup(self, event) -> None:
+        komd = pygame.key.get_mods()
+        match event.key:
+            case pygame.K_n:
+                self.is_stepping = False
     def handle_keydown(self, event) -> None:
         kmod = pygame.key.get_mods()                    # Which modifier keys are held
         match event.key:
@@ -931,6 +937,7 @@ class Game:
                     case _:
                         pass
             case pygame.K_SPACE: self.step_physics()
+            case pygame.K_n: self.is_stepping = True
             case _:
                 logger.debug(f"{event.unicode}")
 
