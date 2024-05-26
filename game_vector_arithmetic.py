@@ -631,6 +631,7 @@ class Game:
         self.debug_hud.add_text(f"{vectors_str}")
 
     def handle_ui_events(self) -> None:
+        kmod = pygame.key.get_mods()                    # Which modifier keys are held
         for event in pygame.event.get():
             match event.type:
                 # No use for these events yet
@@ -670,7 +671,12 @@ class Game:
                     match event.button:
                         case 1:
                             logger.debug("Left-click")
-                            self.handle_mousebuttondown_leftclick()
+                            if kmod & pygame.KMOD_SHIFT:
+                                # Let shift+left-click be my panning
+                                # because I cannot do right-click-and-drag on the trackpad
+                                self.handle_mousebuttondown_rightclick()
+                            else:
+                                self.handle_mousebuttondown_leftclick()
                         case 2:
                             logger.debug("Middle-click")
                             self.handle_mousebuttondown_middleclick()
@@ -717,6 +723,9 @@ class Game:
             case pygame.K_3: self.physics.line_color = self.color_3
             case _:
                 logger.debug(f"{event.unicode}")
+
+    def handle_mousebuttondown_rightclick(self) -> None:
+        self.handle_mousebuttondown_middleclick()
 
     def handle_mousebuttondown_leftclick(self) -> None:
         mpos_g = self.grid.xfm_pg(pygame.mouse.get_pos())
